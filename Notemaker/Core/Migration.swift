@@ -155,10 +155,17 @@ enum Migration {
 
 /// JSON file persistence: ~/Library/Application Support/Notemaker/data.json
 enum DataFile {
-    static var defaultURL: URL {
+    /// Test hook: redirect the whole Notemaker folder (used by the shell's --bridge-selftest).
+    nonisolated(unsafe) static var rootOverride: URL? = nil
+
+    /// ~/Library/Application Support/Notemaker
+    static var root: URL {
+        if let r = rootOverride { return r }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return base.appendingPathComponent("Notemaker", isDirectory: true).appendingPathComponent("data.json")
+        return base.appendingPathComponent("Notemaker", isDirectory: true)
     }
+
+    static var defaultURL: URL { root.appendingPathComponent("data.json") }
 
     static func load(_ url: URL = defaultURL) throws -> AppData? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }

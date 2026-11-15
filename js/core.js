@@ -109,7 +109,7 @@
     function defaultSettings() {
         return {
             theme: 'system', autoRollover: true, focusMinutes: 25, breakMinutes: 5, reviewTime: '18:00',
-            weekStartsOn: 1, dayStart: '07:00', dayEnd: '21:00', lockHash: null
+            weekStartsOn: 1, dayStart: '07:00', dayEnd: '21:00', lockHash: null, vaultAutoLockMinutes: 5
         };
     }
 
@@ -130,7 +130,7 @@
     function builtinTemplates() { return BUILTIN_TEMPLATES.map((t) => Object.assign({}, t)); }
 
     function emptyDoc() {
-        return { app: 'notemaker', version: 2, exportedAt: null, tasks: [], notes: {}, habits: [], templates: builtinTemplates(), focusSessions: [], settings: defaultSettings() };
+        return { app: 'notemaker', version: 2, exportedAt: null, tasks: [], notes: {}, habits: [], templates: builtinTemplates(), focusSessions: [], settings: defaultSettings(), vault: null };
     }
 
     const str = (v, d) => (typeof v === 'string' ? v : (v == null ? (d || '') : String(v)));
@@ -244,7 +244,8 @@
             weekStartsOn: raw.weekStartsOn == null ? d.weekStartsOn : normalizeWeekStart(raw.weekStartsOn),
             dayStart: isValidTime(raw.dayStart) ? raw.dayStart : d.dayStart,
             dayEnd: isValidTime(raw.dayEnd) && (!isValidTime(raw.dayStart) || raw.dayEnd > raw.dayStart) ? raw.dayEnd : d.dayEnd,
-            lockHash: normalizeLockHash(raw.lockHash)
+            lockHash: normalizeLockHash(raw.lockHash),
+            vaultAutoLockMinutes: int(raw.vaultAutoLockMinutes, d.vaultAutoLockMinutes, 1, 120)
         };
     }
 
@@ -266,8 +267,20 @@
             habits: Array.isArray(raw.habits) ? raw.habits.map(normalizeHabit) : [],
             templates: Array.isArray(raw.templates) ? raw.templates.map(normalizeTemplate) : builtinTemplates(),
             focusSessions: Array.isArray(raw.focusSessions) ? raw.focusSessions.map(normalizeSession) : [],
-            settings: normalizeSettings(raw.settings)
+            settings: normalizeSettings(raw.settings),
+            vault: normalizeVault(raw.vault)
         };
+    }
+    /** Vault validation lives in vault-core.js (docs/VAULT_FORMAT.md); blobs are never kept in the document. */
+    function vaultCore() {
+        if (globalThis.NotemakerVault) return globalThis.NotemakerVault;
+        if (typeof require === 'function') { try { return require('./vault-core.js'); } catch (e) { /* not available */ } }
+        return null;
+    }
+    function normalizeVault(v) {
+        if (v == null) return null;
+        const V = vaultCore();
+        return V ? V.normalizeVault(v) : null;
     }
 
     // ------------------------------------------------------------------
@@ -858,7 +871,8 @@
         const n = normalizeDoc(doc);
         return {
             app: 'notemaker', version: 2, exportedAt: nowIso || new Date().toISOString(),
-            tasks: n.tasks, notes: n.notes, habits: n.habits, templates: n.templates, focusSessions: n.focusSessions, settings: n.settings
+            tasks: n.tasks, notes: n.notes, habits: n.habits, templates: n.templates, focusSessions: n.focusSessions, settings: n.settings,
+            vault: n.vault
         };
     }
     /**
@@ -899,6 +913,13 @@
         const sIds = new Set(doc.focusSessions.map((s) => s.id));
         for (const s of incoming.focusSessions) if (!sIds.has(s.id)) { doc.focusSessions.push(Object.assign({}, s)); stats.sessionsAdded++; }
         if (!doc.settings.lockHash && incoming.settings.lockHash) doc.settings.lockHash = Object.assign({}, incoming.settings.lockHash);
+        // vault: adopt an incoming vault only when there is none locally; never merge or overwrite a local vault
+        stats.vaultAdopted = false; stats.vaultSkipped = false;
+        if (incoming.vault) {
+            if (!doc.vault) { doc.vault = JSON.parse(JSON.stringify(incoming.vault)); stats.vaultAdopted = true; }
+            else if (JSON.stringify(doc.vault) !== JSON.stringify(incoming.vault)) stats.vaultSkipped = true;
+        }
+        if (doc.vault === undefined) doc.vault = null;
         return { doc, stats };
     }
 

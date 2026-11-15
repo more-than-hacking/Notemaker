@@ -57,7 +57,17 @@
         list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>', drag: '<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>',
         tomato: '<circle cx="12" cy="13" r="8"/><path d="M12 5V2M9 4l3 1 3-1"/>', forward: '<path d="M13 17l5-5-5-5M6 17l5-5-5-5"/>', note: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
         link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>', info: '<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>',
-        moon2: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>', monitor: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>', snooze: '<path d="M4 4h6l-6 7h6M14 10h6l-6 8h6"/>'
+        moon2: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>', monitor: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>', snooze: '<path d="M4 4h6l-6 7h6M14 10h6l-6 8h6"/>',
+        eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+        copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+        key: '<circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/>',
+        shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+        card: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>',
+        file: '<path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M13 2v7h7"/>',
+        more: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
+        star: '<path d="M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/>',
+        vault: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="12" cy="12" r="4"/><path d="M12 8v1.5M12 14.5V16M8 12h1.5M14.5 12H16M7 21v1M17 21v1"/>',
+        back: '<path d="M15 18l-6-6 6-6"/>'
     };
     NM.icon = function (name, cls) {
         const span = document.createElement('span');
@@ -198,14 +208,30 @@
         });
     };
 
-    NM.download = function (filename, text, mime) {
-        const blob = new Blob([text], { type: mime || 'application/json' });
+    /** Save a file: desktop shell → native save panel (files.save); browser → download link. data: string | Uint8Array */
+    NM.download = function (filename, data, mime) {
+        mime = mime || 'application/json';
+        if (NM.native) {
+            const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+            NM.native.request('files.save', { suggestedName: filename, mime, base64: window.NotemakerVault.b64(bytes) })
+                .then((r) => { if (r && r.saved) NM.toast('Saved ' + (r.path || filename), 'ok'); })
+                .catch((e) => NM.toast('Could not save the file: ' + e.message, 'error'));
+            return;
+        }
+        const blob = new Blob([data], { type: mime });
         const url = URL.createObjectURL(blob);
         const a = h('a', { href: url, download: filename });
         document.body.appendChild(a);
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+
+    /** Open an external http(s)/mailto URL (desktop: default browser via the shell). */
+    NM.openExternal = function (url) {
+        if (!/^(https?:\/\/|mailto:)/i.test(String(url || ''))) return;
+        if (NM.native) NM.native.request('app.openExternal', { url }).catch(() => { /* */ });
+        else window.open(url, '_blank', 'noopener,noreferrer');
     };
 
     NM.isTyping = function (e) {

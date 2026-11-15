@@ -1,0 +1,111 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Notemaker bridge self-test</title></head>
+<body style="font:13px -apple-system;padding:16px"><h3>Notemaker bridge self-test</h3><pre id="out"></pre>
+<script>
+// Values copied from docs/vault-test-vector.json (recovery slot only).
+const VEC = {"recoveryBytes": "EBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8=", "vdk": "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8=", "slot": {"id": "11111111-1111-4111-8111-111111111111", "type": "recovery", "label": "Recovery key", "createdAt": "2026-11-16T00:00:00Z", "salt": "ICEiIyQlJicoKSorLC0uLw==", "iv": "MDEyMzQ1Njc4OTo7", "ct": "yuTURw62iuPY9QMD2ooFBfVNcPsyejAoHEu32Xf9nc6NTFtKKcdHrFXL0L46AkhX"}, "verifier": {"iv": "AQIDBAUGBwgJCgsM", "ct": "yEUhVUdF3BA82pFsMfN3m9FfsVlOd+K6lM73pF6AC/Q7ig=="}};
+const lines = []; let passed = 0, failed = 0;
+const log = s => { lines.push(s); document.getElementById("out").textContent = lines.join("\n"); };
+const ok = (c, name, extra) => { if (c) { passed++; log("  ✓ " + name + (extra ? " — " + extra : "")); } else { failed++; log("  ✗ " + name + (extra ? " — " + extra : "")); } };
+const N = () => window.NotemakerNative;
+const req = (m, p) => N().request(m, p);
+const rejects = async (m, p, name, expect) => {
+  try { await req(m, p); ok(false, name, "did not reject"); }
+  catch (e) { ok(!expect || String(e.message).includes(expect), name, "rejected: " + e.message); }
+};
+const b64 = u8 => btoa(String.fromCharCode(...u8));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const te = new TextEncoder();
+const uuid = () => crypto.randomUUID();
+
+async function hkdf(ikm, salt, info) {
+  const k = await crypto.subtle.importKey("raw", ikm, "HKDF", false, ["deriveBits"]);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt, info: te.encode(info) }, k, 256));
+}
+async function gcmOpen(keyBytes, iv, ct, aad) {
+  const k = await crypto.subtle.importKey("raw", keyBytes, "AES-GCM", false, ["decrypt"]);
+  return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData: te.encode(aad) }, k, ct));
+}
+
+async function run() {
+  log("Environment");
+  ok(!!N() && N().isDesktop === true && N().platform === "macos", "NotemakerNative injected", N() && N().shellVersion);
+  ok(Object.isFrozen(N()), "bridge object frozen");
+  ok(window.isSecureContext === true, "isSecureContext", String(window.isSecureContext) + " on " + location.protocol);
+  ok(!!(window.crypto && crypto.subtle), "crypto.subtle available");
+  ok(typeof crypto.randomUUID === "function", "crypto.randomUUID available");
+
+  log("WebCrypto vault vector (recovery slot)");
+  try {
+    const s = VEC.slot;
+    const wrap = await hkdf(unb64(VEC.recoveryBytes), unb64(s.salt), "notemaker/vault/v1/recovery");
+    const vdk = await gcmOpen(wrap, unb64(s.iv), unb64(s.ct), "notemaker/vault/v1/slot/" + s.id);
+    ok(b64(vdk) === VEC.vdk, "HKDF + AES-GCM unwrap → VDK matches vector");
+    const ver = await gcmOpen(vdk, unb64(VEC.verifier.iv), unb64(VEC.verifier.ct), "notemaker/vault/v1/verifier");
+    ok(new TextDecoder().decode(ver) === "notemaker-vault-ok", "verifier decrypts");
+  } catch (e) { ok(false, "WebCrypto vector", e.message); }
+
+  log("storage.* (temporary data folder)");
+  const first = await req("storage.load");
+  ok(first && first.json === null, "storage.load on empty folder → null");
+  const doc = JSON.stringify({ app: "notemaker", version: 2, tasks: [], notes: {}, marker: "ü✓" });
+  ok((await req("storage.save", { json: doc })).ok === true, "storage.save");
+  ok((await req("storage.load")).json === doc, "storage.load returns saved JSON (UTF-8 intact)");
+  await rejects("storage.save", { json: "not json" }, "storage.save rejects invalid JSON");
+  await rejects("storage.save", { json: "[1,2]" }, "storage.save rejects non-object JSON");
+
+  log("blobs.*");
+  const id = uuid(), iv = crypto.getRandomValues(new Uint8Array(12)), ct = crypto.getRandomValues(new Uint8Array(1000));
+  ok((await req("blobs.put", { id, iv: b64(iv), ct: b64(ct) })).ok === true, "blobs.put");
+  const got = await req("blobs.get", { id });
+  ok(got && got.iv === b64(iv) && got.ct === b64(ct), "blobs.get round trip");
+  ok((await req("blobs.delete", { id })).ok === true, "blobs.delete");
+  ok((await req("blobs.get", { id })) === null, "blobs.get after delete → null");
+  await rejects("blobs.put", { id: "../../etc/passwd", iv: b64(iv), ct: b64(ct) }, "blobs.put rejects non-UUID id", "UUID");
+  await rejects("blobs.put", { id, iv: b64(new Uint8Array(8)), ct: b64(ct) }, "blobs.put rejects 8-byte iv");
+  await rejects("blobs.put", { id, iv: b64(iv), ct: "%%%not base64%%%" }, "blobs.put rejects bad base64");
+
+  log("se.* (no Touch ID is triggered)");
+  const av = await req("se.available");
+  ok(av && typeof av.available === "boolean" && typeof av.device === "string", "se.available", JSON.stringify(av));
+  if (av.available) {
+    const slotId = uuid();
+    const vdk = crypto.getRandomValues(new Uint8Array(32));
+    try {
+      const slot = await req("se.createSlot", { slotId, label: "Self-test", vdk: b64(vdk) });
+      ok(slot.type === "secure-enclave" && slot.id === slotId && slot.label === "Self-test", "se.createSlot returns a secure-enclave keyslot");
+      ok(unb64(slot.ephemeralPublicKey).length === 65 && unb64(slot.publicKey).length === 65, "X9.63 public keys are 65 bytes");
+      ok(unb64(slot.iv).length === 12 && unb64(slot.ct).length === 48, "slot iv 12 / ct 48 bytes");
+      ok(typeof slot.device === "string" && typeof slot.createdAt === "string", "device + createdAt present");
+      ok((await req("se.deleteSlot", { slotId })).ok === true, "se.deleteSlot");
+      await rejects("se.unwrapSlot", { slot }, "se.unwrapSlot after delete → not-this-device", "not-this-device");
+    } catch (e) { ok(false, "se.createSlot", e.message); }
+  }
+  await rejects("se.createSlot", { slotId: uuid(), label: "x", vdk: b64(new Uint8Array(16)) }, "se.createSlot rejects 16-byte vdk");
+  await rejects("se.unwrapSlot", { slot: { id: uuid(), type: "recovery" } }, "se.unwrapSlot rejects non-SE slot");
+
+  log("notify / app / clipboard (non-interactive)");
+  const perm = await req("notify.permission");
+  ok(perm && ["granted", "denied", "default"].includes(perm.status), "notify.permission", perm && perm.status);
+  await rejects("notify.sync", { items: "nope" }, "notify.sync validates items");
+  await rejects("notify.sync", { items: [{ id: "x", title: "t", body: "", at: "not-a-date", day: "2026-11-16" }] }, "notify.sync validates at");
+  ok((await req("app.setBadge", { count: 0 })).ok === true, "app.setBadge 0");
+  ok((await req("app.setFocusTimer", { label: "24:59", phase: "focus" })).ok === true, "app.setFocusTimer show");
+  ok((await req("app.setFocusTimer", { label: null })).ok === true, "app.setFocusTimer hide");
+  await rejects("app.setFocusTimer", { label: "1", phase: "nap" }, "app.setFocusTimer validates phase");
+  await rejects("app.openExternal", { url: "file:///etc/passwd" }, "app.openExternal rejects file://");
+  await rejects("clipboard.write", { text: "x", clearAfterSeconds: 0 }, "clipboard.write validates clearAfterSeconds");
+  await rejects("no.such.method", {}, "unknown method rejected", "unknown method");
+
+  log("events");
+  const evt = await new Promise(res => {
+    const h = e => { window.removeEventListener("notemaker-native", h); res(e.detail); };
+    window.addEventListener("notemaker-native", h);
+    window.__notemakerMenuUndo("undo");      // no editable focus → dispatches a menu event
+  });
+  ok(evt && evt.type === "menu" && evt.command === "undo", "undo outside text field → menu event");
+}
+
+run().catch(e => ok(false, "uncaught", e && e.message)).finally(() =>
+  N().request("selftest.done", { passed, failed, lines }));
+</script></body></html>

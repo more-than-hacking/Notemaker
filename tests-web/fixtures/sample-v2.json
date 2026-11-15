@@ -274,9 +274,9 @@
         "alg": "AES-GCM-256",
         "kdf": "PBKDF2-SHA256",
         "iterations": 210000,
-        "salt": "NBgnO/iUMDpvitvHj8nvsQ==",
-        "iv": "SlH0jiRT12TxdJAZ",
-        "ct": "Rh04GZTcJN+bWvLAhyx3tHcFMCag/rMb8qpd7do5Y1tzjneAexX8y/AxsHBiFXW/bMz7e5otq956"
+        "salt": "wb1J/jR3XrjPqwhG8an55Q==",
+        "iv": "R6lXK2xdaTB6sEIs",
+        "ct": "+w4Twl2gu6kZFZSGnanDnMETZGQx8i+qG20fNjBTKw06eE9HdsASXEa0p5WaS/FrgE9FXwPX1tmJ"
       }
     }
   },
@@ -377,9 +377,11 @@
     "dayStart": "08:00",
     "dayEnd": "20:00",
     "lockHash": {
-      "salt": "oZoVUaqdZiM5lA46F82LLw==",
+      "salt": "9EkcpCjCKMTRrrX+yoVHXw==",
       "iterations": 210000,
-      "hash": "jeLKSW66a40M3meK/uN10bLXBN59I/FePw/2tFfrYqs="
-    }
-  }
+      "hash": "YGulAzwDYIlck67G+n8L81oN43UPhySGbweGKhrNlQ8="
+    },
+    "vaultAutoLockMinutes": 5
+  },
+  "vault": null
 }

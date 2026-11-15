@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 // Notemaker core tests — compiled with Notemaker/Core/*.swift by Tests-mac/run.sh.
 // Usage: notemaker-tests [--root <repo>] | --import <path.json>
@@ -365,6 +366,173 @@ if FileManager.default.fileExists(atPath: v1fixture.path) {
         check(d.tasks.allSatisfy { ($0.status == .done) == $0.done }, "web v1 fixture status consistent")
         print("    tasks \(d.tasks.count), notes \(d.notes.count)")
     } catch { check(false, "web v1 fixture threw \(error)") }
+}
+
+// MARK: Vault (docs/VAULT_FORMAT.md + docs/vault-test-vector.json)
+section("Vault vector (docs/vault-test-vector.json)")
+do {
+    let raw = try Data(contentsOf: URL(fileURLWithPath: root).appendingPathComponent("docs/vault-test-vector.json"))
+    let obj = try JSONSerialization.jsonObject(with: raw) as! [String: Any]
+    func b64(_ k: String) -> Data { Data(base64Encoded: obj[k] as! String)! }
+    func b64url(_ s: String) -> Data {
+        var t = s.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while t.count % 4 != 0 { t += "=" }
+        return Data(base64Encoded: t)!
+    }
+    let vdk = b64("vdk"), recoveryBytes = b64("recoveryBytes"), prf = b64("prfOutput")
+    let vault = try JSONDecoder().decode(VaultData.self, from: JSONSerialization.data(withJSONObject: obj["vault"]!))
+    eq(vault.mode, "hardware+recovery", "vault mode decoded")
+    eq(vault.keyslots.count, 3, "3 keyslots decoded")
+
+    // Recovery key encode / decode / checksum
+    eq(RecoveryKey.encode(recoveryBytes), obj["recoveryKey"] as! String, "recovery key encodes to vector")
+    eq(try RecoveryKey.decode(obj["recoveryKey"] as! String), recoveryBytes, "recovery key decodes")
+    let messy = (obj["recoveryKey"] as! String).lowercased().replacingOccurrences(of: "-", with: " ")
+        .replacingOccurrences(of: "0", with: "o").replacingOccurrences(of: "1", with: "l")
+    eq(try RecoveryKey.decode(messy), recoveryBytes, "recovery key parse: lower case, spaces, O→0, L→1")
+    var typo = Array(obj["recoveryKey"] as! String)
+    typo[3] = typo[3] == "A" ? "B" : "A"
+    do { _ = try RecoveryKey.decode(String(typo)); check(false, "typo must fail checksum") }
+    catch RecoveryKey.RKError.badChecksum { check(true, "typo → checksum failure") }
+    catch { check(false, "typo → checksum failure", "\(error)") }
+    do { _ = try RecoveryKey.decode("ABCDE-12345"); check(false, "short key must fail") }
+    catch RecoveryKey.RKError.badLength { check(true, "short key → length error") }
+    for _ in 0..<20 {
+        let r = VaultCrypto.randomBytes(32)
+        let k = RecoveryKey.encode(r)
+        if k.count != 65 || (try? RecoveryKey.decode(k)) != r { check(false, "random recovery key round trip"); break }
+    }
+    check(true, "20 random recovery keys round trip (11 groups of 5)")
+
+    // Keyslots
+    let rec = vault.keyslots.first { $0.type == "recovery" }!
+    eq(try VaultCrypto.unwrapRecovery(rec, recoveryBytes: recoveryBytes), vdk, "recovery slot → VDK")
+    do { _ = try VaultCrypto.unwrapRecovery(rec, recoveryBytes: VaultCrypto.randomBytes(32)); check(false, "wrong recovery key must fail") }
+    catch { check(true, "wrong recovery key rejected") }
+    check(VaultCrypto.checkVerifier(vault.verifier, vdk: vdk), "verifier accepts VDK")
+    check(!VaultCrypto.checkVerifier(vault.verifier, vdk: VaultCrypto.randomBytes(32)), "verifier rejects other key")
+
+    let jwk = obj["seSoftwarePrivateJwk"] as! [String: Any]
+    let seSoft = try P256.KeyAgreement.PrivateKey(rawRepresentation: b64url(jwk["d"] as! String))
+    let se = vault.keyslots.first { $0.type == "secure-enclave" }!
+    eq(Data(base64Encoded: se.publicKey!)!, seSoft.publicKey.x963Representation, "SE slot publicKey = software key's public key")
+    eq(try VaultCrypto.unwrapSecureEnclave(se) { try seSoft.sharedSecretFromKeyAgreement(with: $0) }, vdk,
+       "secure-enclave slot unwrapped with the software P-256 key → VDK")
+    let pk = vault.keyslots.first { $0.type == "passkey-prf" }!
+    eq(try VaultCrypto.unwrapPasskey(pk, prfOutput: prf), vdk, "passkey-prf slot unwrapped with prfOutput → VDK")
+    eq(pk.credentialId, "dGVzdC1jcmVkZW50aWFs", "passkey slot fields preserved (credentialId)")
+
+    // Items
+    let expected = obj["expectedPayloads"] as! [String: Any]
+    for r in vault.items {
+        let plain = try VaultCrypto.decryptItemJSON(r, vdk: vdk)
+        let got = try JSONSerialization.jsonObject(with: plain) as! NSDictionary
+        check(got.isEqual(to: expected[r.id] as! [String: Any]), "item \(r.id.suffix(1)) decrypts to expected payload")
+        let item = try VaultCrypto.decryptItem(r, vdk: vdk)
+        let re = try JSONSerialization.jsonObject(with: JSONEncoder().encode(item.payload)) as! NSDictionary
+        check(re.isEqual(to: expected[r.id] as! [String: Any]), "item \(r.id.suffix(1)) (\(item.payload.type)) payload re-encodes losslessly")
+        do { var bad = r; bad.id = UUID().uuidString; _ = try VaultCrypto.decryptItemJSON(bad, vdk: vdk); check(false, "AAD must bind item id") }
+        catch { check(true, "item \(r.id.suffix(1)) AAD bound to its id") }
+    }
+    // Blob
+    let fileItem = try VaultCrypto.decryptItem(vault.items.first { $0.id.hasSuffix("4") }!, vdk: vdk)
+    let blobBox = vault.blobs![fileItem.payload.blobId]!
+    let stored = Data(base64Encoded: blobBox.iv)! + Data(base64Encoded: blobBox.ct)!
+    let bytes = try VaultCrypto.decryptBlob(stored, blobId: fileItem.payload.blobId, vdk: vdk)
+    eq(bytes, b64("fileBytes"), "blob decrypts to fileBytes")
+    eq(VaultCrypto.sha256Hex(bytes), fileItem.payload.sha256, "blob sha256 matches item")
+    eq(bytes.count, fileItem.payload.size, "blob size matches item")
+
+    // Vault document round trip, incl. passkey slot + blobs; and through AppData (top-level "vault")
+    let reVault = try JSONDecoder().decode(VaultData.self, from: JSONEncoder().encode(vault))
+    check(reVault == vault, "vault decode → encode → decode equal")
+    let reObj = try JSONSerialization.jsonObject(with: JSONEncoder().encode(vault)) as! NSDictionary
+    check(reObj.isEqual(to: obj["vault"] as! [String: Any]), "vault re-encodes to the identical JSON")
+    var doc = AppData()
+    doc.extra["vault"] = try JSONDecoder().decode(JSONValue.self, from: JSONSerialization.data(withJSONObject: obj["vault"]!))
+    let docObj = try JSONSerialization.jsonObject(with: try JSONDecoder().decode(AppData.self, from: doc.jsonData()).jsonData()) as! [String: Any]
+    check((docObj["vault"] as? NSDictionary)?.isEqual(to: obj["vault"] as! [String: Any]) == true, "top-level vault preserved through v2 data round trip")
+} catch { check(false, "vault vector threw \(error)") }
+
+section("Vault: new vault round trip + SE wrap math (software keys)")
+do {
+    let vdk = VaultCrypto.randomBytes(32)
+    let (v0, recovery) = try VaultCrypto.newVault(vdk: vdk, mode: .hardwareRecovery)
+    var v = v0
+    check(recovery != nil && v.keyslots.count == 1, "hardware+recovery creates a recovery slot")
+    let (hw, noRec) = try VaultCrypto.newVault(vdk: vdk, mode: .hardwareOnly)
+    check(noRec == nil && hw.keyslots.isEmpty && hw.mode == "hardware-only", "hardware-only has no recovery slot")
+    // "secure-enclave" slot exactly as se.createSlot builds it, with a software stand-in for the SE key
+    let fakeSE = P256.KeyAgreement.PrivateKey()
+    let slotId = UUID().uuidString.lowercased()
+    let seSlot = try VaultCrypto.wrapForSecureEnclave(vdk: vdk, sePublicKey: fakeSE.publicKey, slotId: slotId, label: "Mac", device: "Test")
+    eq(Data(base64Encoded: seSlot.ephemeralPublicKey!)!.count, 65, "ephemeral key X9.63 65 bytes")
+    eq(Data(base64Encoded: seSlot.ct)!.count, 48, "SE slot ct 48 bytes")
+    eq(try VaultCrypto.unwrapSecureEnclave(seSlot) { try fakeSE.sharedSecretFromKeyAgreement(with: $0) }, vdk, "SE slot unwraps with its key")
+    do { _ = try VaultCrypto.unwrapSecureEnclave(seSlot) { try P256.KeyAgreement.PrivateKey().sharedSecretFromKeyAgreement(with: $0) }; check(false, "other key must fail") }
+    catch { check(true, "SE slot rejects a different key") }
+    var moved = seSlot; moved.id = UUID().uuidString
+    do { _ = try VaultCrypto.unwrapSecureEnclave(moved) { try fakeSE.sharedSecretFromKeyAgreement(with: $0) }; check(false, "slot AAD must bind id") }
+    catch { check(true, "SE slot AAD bound to slot id") }
+    // independent HKDF check: CryptoKit's SharedSecret HKDF == our HKDF over the raw secret
+    let eph = Data(base64Encoded: seSlot.ephemeralPublicKey!)!
+    let ss = try fakeSE.sharedSecretFromKeyAgreement(with: P256.KeyAgreement.PublicKey(x963Representation: eph))
+    let k1 = ss.hkdfDerivedSymmetricKey(using: SHA256.self, salt: eph, sharedInfo: Data(VaultCrypto.infoSE.utf8), outputByteCount: 32)
+    let k2 = VaultCrypto.hkdf(ikm: ss.withUnsafeBytes { Data($0) }, salt: eph, info: VaultCrypto.infoSE)
+    check(k1.withUnsafeBytes { Data($0) } == k2.withUnsafeBytes { Data($0) }, "HKDF matches CryptoKit SharedSecret HKDF")
+    v.keyslots.append(seSlot)
+    // items of every type
+    var login = VaultPayload(type: .login, title: "Bank"); login.username = "me"; login.password = PasswordGenerator.generate(.init())
+    var card = VaultPayload(type: .card, title: "Visa"); card.number = "4111"; card.fields = [VaultField(label: "PIN", value: "1", secret: true)]
+    let blobId = UUID().uuidString.lowercased()
+    let fileBytes = Data("hello vault".utf8)
+    var file = VaultPayload(type: .file, title: "Doc"); file.fileName = "a.txt"; file.mime = "text/plain"
+    file.size = fileBytes.count; file.blobId = blobId; file.sha256 = VaultCrypto.sha256Hex(fileBytes)
+    var note = VaultPayload(type: .note, title: "Secret"); note.markdown = "# hi"; note.favorite = true; note.tags = ["x"]
+    let payloads = [note, login, card, file]
+    for p in payloads { v.items.append(try VaultCrypto.encryptItem(p, id: UUID().uuidString.lowercased(), vdk: vdk, createdAt: ISO.string())) }
+    let blob = try VaultCrypto.encryptBlob(fileBytes, blobId: blobId, vdk: vdk)
+    v.blobs = [blobId: VaultCipherBox(iv: blob.prefix(12).base64EncodedString(), ct: blob.dropFirst(12).base64EncodedString())]
+    let decoded = try JSONDecoder().decode(VaultData.self, from: JSONEncoder().encode(v))
+    let vdk2 = try VaultCrypto.unwrapRecovery(decoded.keyslots[0], recoveryBytes: try RecoveryKey.decode(RecoveryKey.encode(recovery!)))
+    eq(vdk2, vdk, "recovery key (via printed form) unlocks the new vault")
+    check(VaultCrypto.checkVerifier(decoded.verifier, vdk: vdk2), "new vault verifier ok")
+    eq(try decoded.items.map { try VaultCrypto.decryptItem($0, vdk: vdk2).payload }, payloads, "all item types round trip")
+    let b = decoded.blobs![blobId]!
+    eq(try VaultCrypto.decryptBlob(Data(base64Encoded: b.iv)! + Data(base64Encoded: b.ct)!, blobId: blobId, vdk: vdk2), fileBytes, "blob round trip")
+    let again = try VaultCrypto.encryptItem(note, id: decoded.items[0].id, vdk: vdk, createdAt: decoded.items[0].createdAt)
+    check(again.iv != decoded.items[0].iv, "re-encrypting an item uses a fresh IV")
+    do { _ = try VaultCrypto.encryptBlob(Data(count: VaultCrypto.maxBlobBytes + 1), blobId: blobId, vdk: vdk); check(false, "25 MB limit") }
+    catch { check(true, "blobs over 25 MB rejected") }
+} catch { check(false, "vault round trip threw \(error)") }
+
+section("Password generator")
+do {
+    var o = PasswordGenerator.Options(); o.length = 32
+    let pw = PasswordGenerator.generate(o)
+    eq(pw.count, 32, "length 32")
+    check(pw.contains { $0.isUppercase } && pw.contains { $0.isLowercase } && pw.contains { $0.isNumber } && pw.contains { !$0.isLetter && !$0.isNumber }, "every enabled class present")
+    check(!pw.contains { PasswordGenerator.lookAlikes.contains($0) }, "no look-alikes")
+    o.length = 3; eq(PasswordGenerator.generate(o).count, 8, "min length 8")
+    o.length = 500; eq(PasswordGenerator.generate(o).count, 64, "max length 64")
+    o = .init(); o.upper = false; o.symbols = false; o.digits = false; o.length = 12
+    check(PasswordGenerator.generate(o).allSatisfy { $0.isLowercase }, "lowercase only")
+    check(PasswordGenerator.strength("abc") == 0 && PasswordGenerator.strength(PasswordGenerator.generate(.init())) == 4, "strength meter")
+}
+
+section("Bridge parameter validation")
+do {
+    check((try? Validate.uuid("aaaaaaaa-0000-4000-8000-000000000001", "id")) != nil, "UUID accepted")
+    for bad: Any in ["../x", "aaaaaaaa-0000-4000-8000-00000000000", 42, "aaaaaaaa-0000-4000-8000-000000000001/.."] {
+        check((try? Validate.uuid(bad, "id")) == nil, "UUID rejected: \(bad)")
+    }
+    check((try? Validate.base64("AAAA", "x", maxBytes: 3)) != nil, "base64 ok")
+    check((try? Validate.base64("AAAAAA==", "x", maxBytes: 3)) == nil, "base64 over limit rejected")
+    check((try? Validate.base64("@@@@", "x", maxBytes: 10)) == nil, "bad base64 rejected")
+    check((try? Validate.int(NSNumber(value: true), "n", range: 0...5)) == nil, "bool is not a number")
+    check((try? Validate.int(NSNumber(value: 2.5), "n", range: 0...5)) == nil, "fraction rejected")
+    eq(try Validate.int(NSNumber(value: 3), "n", range: 0...5), 3, "int ok")
+    check((try? Validate.string(String(repeating: "x", count: 11), "s", max: 10)) == nil, "string length limit")
 }
 
 print("\n\(passes) passed, \(failures) failed")

@@ -47,7 +47,7 @@
     function draw() {
         const root = document.getElementById('focusMini');
         NM.clear(root);
-        if (!st) { root.hidden = true; els = null; document.title = 'Notemaker - Daily Notes & Tasks'; return; }
+        if (!st) { root.hidden = true; els = null; document.title = 'Notemaker - Daily Notes & Tasks'; nativeLabel(null); return; }
         root.hidden = false;
         root.className = 'focus-mini ' + st.kind + (st.paused ? ' paused' : '');
         const t = st.taskId ? NM.task(st.taskId) : null;
@@ -71,6 +71,14 @@
         const frac = 1 - rem / (st.durationMin * 60000);
         els.fg.setAttribute('stroke-dasharray', (els.L * frac).toFixed(1) + ' ' + els.L.toFixed(1));
         document.title = (st.paused ? '⏸ ' : st.kind === 'focus' ? '🍅 ' : '☕ ') + fmt(rem) + ' · Notemaker';
+        nativeLabel((st.paused ? '⏸ ' : '') + fmt(rem), st.kind);
+    }
+    let lastLabel;
+    /** Desktop shell: menu-bar status item while a timer runs (null hides it). */
+    function nativeLabel(label, phase) {
+        if (!NM.native || label === lastLabel) return;
+        lastLabel = label;
+        NM.native.request('app.setFocusTimer', label == null ? { label: null } : { label, phase }).catch(() => { /* */ });
     }
 
     function start(taskId) {

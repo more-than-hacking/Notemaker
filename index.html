@@ -11,6 +11,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="web-icons/icon-32.png">
     <link rel="apple-touch-icon" sizes="180x180" href="web-icons/icon-180.png">
     <link rel="manifest" href="manifest.webmanifest">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Notemaker">
     <link rel="stylesheet" href="styles.css">
@@ -27,7 +28,7 @@
         })();
     </script>
 </head>
-<body>
+<body class="booting">
     <a class="skip-link" href="#main">Skip to content</a>
     <div class="app" id="app">
         <!-- Sidebar -->
@@ -49,6 +50,7 @@
                 <button class="view-btn" data-view="habits" type="button"><span class="vi" data-icon="target"></span><span>Habits</span><kbd>5</kbd></button>
                 <button class="view-btn" data-view="insights" type="button"><span class="vi" data-icon="chart"></span><span>Insights</span><kbd>6</kbd></button>
                 <button class="view-btn" data-view="settings" type="button"><span class="vi" data-icon="settings"></span><span>Settings</span><kbd>7</kbd></button>
+                <button class="view-btn" data-view="vault" type="button"><span class="vi" data-icon="lock"></span><span>Vault</span><kbd>8</kbd></button>
             </nav>
 
             <section class="side-card">
@@ -231,13 +233,17 @@
             <section class="view" id="view-habits" data-view="habits" hidden></section>
             <section class="view" id="view-insights" data-view="insights" hidden></section>
             <section class="view" id="view-settings" data-view="settings" hidden></section>
+            <section class="view" id="view-vault" data-view="vault" hidden></section>
         </main>
     </div>
 
     <aside class="drawer" id="drawer" aria-label="Task details" hidden></aside>
     <div class="focus-mini" id="focusMini" hidden></div>
     <div class="toasts" id="toasts" aria-live="polite"></div>
+    <div class="boot-splash" aria-hidden="true"><img src="web-icons/favicon.svg" alt="" width="64" height="64"></div>
 
+    <script src="js/vault-core.js"></script>
+    <script src="js/native.js"></script>
     <script src="js/core.js"></script>
     <script src="js/store.js"></script>
     <script src="js/ui-common.js"></script>
@@ -253,6 +259,8 @@
     <script src="js/ui-overlays.js"></script>
     <script src="js/focus.js"></script>
     <script src="js/reminders.js"></script>
+    <script src="js/vault-store.js"></script>
+    <script src="js/ui-vault.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

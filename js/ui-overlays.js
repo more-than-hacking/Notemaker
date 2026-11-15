@@ -119,6 +119,9 @@
             { label: 'Redo task change', icon: 'right', run: NM.redoTasks },
             NM.notifyPermission() === 'default' ? { label: 'Enable notifications', icon: 'bell', run: NM.requestNotifications } : null,
             S.passcode ? { label: 'Lock all private notes', icon: 'lock', run: () => { S.passcode = null; S.unlocked = {}; NM.render(); NM.toast('Private notes locked'); } } : null,
+            // vault: the palette may only offer these two (never vault contents)
+            { label: 'Open vault', key: '8', icon: 'lock', run: () => NM.setView('vault') },
+            NM.vault && NM.vault.isUnlocked() ? { label: 'Lock vault', icon: 'lock', run: () => NM.vault.lock('manual') } : null,
             { label: 'Keyboard shortcuts', key: '?', icon: 'keyboard', run: NM.openHelp }
         ]).filter(Boolean);
     }
@@ -155,7 +158,7 @@
         const mod = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl';
         const rows = [
             ['n', 'New task (focus quick add)'], [mod + ' K', 'Command palette'], [mod + ' F  or  /', 'Search everything'],
-            ['← / →', 'Previous / next day'], ['t', 'Jump to today'], ['1 – 7', 'Day · Calendar · Planner · Board · Habits · Insights · Settings'],
+            ['← / →', 'Previous / next day'], ['t', 'Jump to today'], ['1 – 8', 'Day · Calendar · Planner · Board · Habits · Insights · Settings · Vault'],
             [mod + ' Z / ' + mod + ' ⇧ Z', 'Undo / redo task changes (or note edits while editing)'], [mod + ' S  or  Esc', 'Save note while editing'],
             ['?', 'This help'], ['Esc', 'Close dialogs, drawers and overlays']
         ];

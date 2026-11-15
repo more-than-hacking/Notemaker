@@ -2,9 +2,8 @@
 (function () {
     'use strict';
     const C = window.NotemakerCore;
-    const KEY = 'notemaker_v2';
     const UI_KEY = 'notemaker_ui';
-    const V1_TASKS = 'notemaker_tasks', V1_NOTES = 'notemaker_notes', V1_THEME = 'notemaker_theme';
+    const V1_THEME = 'notemaker_theme';
 
     const NM = window.NM = window.NM || {};
     NM.C = C;
@@ -31,30 +30,26 @@
         loadError: null
     };
 
-    NM.load = function () {
-        const raw = ls.get(KEY);
-        let doc = null;
-        if (raw) {
-            try { doc = C.normalizeDoc(JSON.parse(raw)); } catch (e) {
-                // keep the unreadable copy aside instead of overwriting it
-                try { ls.set(KEY + '_corrupt_' + Date.now(), raw); } catch (_) { /* quota */ }
-                S.loadError = 'Saved data could not be read; a copy was kept and a fresh notebook started.';
-            }
+    // desktop shell bridge (null in a normal browser) + persistence (localStorage or storage.load/save)
+    const NC = window.NotemakerNativeClient;
+    NM.native = NC.createBridge(window);
+    let storageObj = null;
+    try { storageObj = window.localStorage; } catch (e) { storageObj = null; }
+    NM.persist = NC.createPersistence({
+        bridge: NM.native, storage: storageObj, core: C,
+        onError: (e) => { if (NM.toast) NM.toast('Could not save to data.json: ' + e.message, 'error', 8000); }
+    });
+
+    NM.load = async function () {
+        let r;
+        try { r = await NM.persist.load(); } catch (e) {
+            r = { doc: C.emptyDoc(), source: 'new', error: 'Could not load data: ' + e.message };
         }
-        if (!doc) {
-            const t = ls.get(V1_TASKS), n = ls.get(V1_NOTES);
-            if (t || n) {
-                try {
-                    // v1 keys are left untouched as a backup
-                    doc = C.migrateV1(JSON.parse(t || '[]'), JSON.parse(n || '[]'), { theme: ls.get(V1_THEME) });
-                    S.migratedFromV1 = true;
-                } catch (e) {
-                    S.loadError = 'Could not migrate v1 data (' + e.message + '). Your v1 data is untouched.';
-                }
-            }
-        }
-        if (!doc) doc = C.emptyDoc();
-        S.doc = doc;
+        S.doc = r.doc;
+        S.migratedFromV1 = r.source === 'local-v1';
+        S.migratedToDesktop = !!NM.native && r.migrated;
+        S.loadError = r.error || null;
+        // v1 keys are left untouched as a backup
         // accent colour carried over from the v1 colour themes
         const v1Theme = ls.get(V1_THEME);
         if (!ls.get('notemaker_accent') && v1Theme && v1Theme !== 'dark') try { ls.set('notemaker_accent', v1Theme); } catch (_) { /* */ }
@@ -65,14 +60,15 @@
             if (ui.sort) S.sort = ui.sort;
             if (ui.filter) Object.assign(S.filter, ui.filter);
         } catch (e) { /* ignore */ }
-        if (!S.loadError || S.migratedFromV1) NM.save();
+        if (!NM.native && !S.loadError) NM.save();
     };
 
     let saveFailedShown = false;
     NM.save = function () {
         try {
-            ls.set(KEY, JSON.stringify(S.doc));
+            NM.persist.save(S.doc);
             saveFailedShown = false;
+            if (NM.afterSave) NM.afterSave();
         } catch (e) {
             if (!saveFailedShown && NM.toast) NM.toast('Could not save — browser storage is full or blocked. Export a backup!', 'error', 8000);
             saveFailedShown = true;

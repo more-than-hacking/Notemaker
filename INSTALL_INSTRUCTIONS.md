@@ -1,6 +1,8 @@
 # Installing Notemaker for macOS
 
-Requires macOS 14 (Sonoma) or later. **Full Xcode is not required** — the Command Line Tools are enough
+Requires macOS 14 (Sonoma) or later. The Mac app runs the same interface as the web version inside a native
+window, and adds native storage, notifications, a menu-bar focus timer and a vault protected by the Secure Enclave
+(Touch ID or your Mac password). **Full Xcode is not required** — the Command Line Tools are enough
 (`xcode-select --install`).
 
 ## Build and install
@@ -22,6 +24,8 @@ app → **Open** → **Open** (or allow it under System Settings → Privacy & S
   automatically. The v1 data is left in place as a backup.
 - **File → Export Backup** writes a v2 JSON file that the web app can import, and **File → Import Backup**
   accepts v2 backups and web v1 backups (merge or replace; undoable).
+- The vault's hardware key never leaves this Mac's Secure Enclave. If you chose "hardware only" when you set up the
+  vault, it can only be opened on this Mac — keep the recovery key if you want a way back in.
 - Reminders and the focus timer use macOS notifications: allow them when asked, or in Settings → General.
 
 ## Troubleshooting

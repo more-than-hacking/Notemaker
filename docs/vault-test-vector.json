@@ -1,0 +1,151 @@
+{
+  "_readme": "Test-only keys. vdk/recoveryBytes/prfOutput/seSoftwarePrivateJwk are given so implementations can assert every step.",
+  "vdk": "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8=",
+  "recoveryBytes": "EBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8=",
+  "recoveryKey": "208H4-4RM2M-B1E60-S38DH-R78Y3-WG228-H34GJ-JC9S8-54N2P-B1D5R-QRKHR",
+  "prfOutput": "kJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq8=",
+  "seSoftwarePrivateJwk": {
+    "key_ops": [
+      "deriveBits"
+    ],
+    "ext": true,
+    "kty": "EC",
+    "x": "2bKChPiwU9xXVGvBpY9y5TEguX1UQMG6eXryt9LWTGc",
+    "y": "0FP54-selYxSB3LjyZUflh64FWLN4fgxp3sqxTKQdTU",
+    "crv": "P-256",
+    "d": "rV9a_w8zns0ghzWjBWxtGW6nAGD8QOfhyXVrbTUgXeE"
+  },
+  "expectedPayloads": {
+    "aaaaaaaa-0000-4000-8000-000000000001": {
+      "type": "note",
+      "title": "Recovery codes",
+      "markdown": "- 1234-5678\n- 9999-0000",
+      "favorite": false,
+      "notes": "",
+      "tags": []
+    },
+    "aaaaaaaa-0000-4000-8000-000000000002": {
+      "type": "login",
+      "title": "Example bank",
+      "username": "raj@example.com",
+      "password": "Tr0ub4dor&3-ü",
+      "url": "https://bank.example.com",
+      "totpSecret": "",
+      "favorite": true,
+      "notes": "",
+      "tags": []
+    },
+    "aaaaaaaa-0000-4000-8000-000000000003": {
+      "type": "card",
+      "title": "Visa",
+      "kind": "card",
+      "holder": "R KUMAR",
+      "number": "4111111111111111",
+      "expiry": "12/29",
+      "cvv": "123",
+      "issuer": "Example Bank",
+      "fields": [
+        {
+          "label": "PIN",
+          "value": "0000",
+          "secret": true
+        }
+      ],
+      "favorite": false,
+      "notes": "",
+      "tags": []
+    },
+    "aaaaaaaa-0000-4000-8000-000000000004": {
+      "type": "file",
+      "title": "Passport scan",
+      "fileName": "passport.pdf",
+      "mime": "application/pdf",
+      "size": 28,
+      "blobId": "bbbbbbbb-0000-4000-8000-000000000001",
+      "sha256": "602656543cdc13daf121a1f05c2fda8fb91ab8987ae1ababe46f197f0a9712f7",
+      "favorite": false,
+      "notes": "",
+      "tags": []
+    }
+  },
+  "fileBytes": "JVBERi0xLjQgdGVzdCBmaWxlIGJ5dGVzIOKckw==",
+  "vault": {
+    "version": 1,
+    "createdAt": "2026-11-16T00:00:00Z",
+    "mode": "hardware+recovery",
+    "verifier": {
+      "iv": "AQIDBAUGBwgJCgsM",
+      "ct": "yEUhVUdF3BA82pFsMfN3m9FfsVlOd+K6lM73pF6AC/Q7ig=="
+    },
+    "keyslots": [
+      {
+        "id": "22222222-2222-4222-8222-222222222222",
+        "type": "secure-enclave",
+        "label": "Test Mac",
+        "device": "Test Mac",
+        "createdAt": "2026-11-16T00:00:00Z",
+        "publicKey": "BNmygoT4sFPcV1RrwaWPcuUxILl9VEDBunl68rfS1kxn0FP54+selYxSB3LjyZUflh64FWLN4fgxp3sqxTKQdTU=",
+        "ephemeralPublicKey": "BHHqYS5XWWWzrG/Wspd2dydfJC996dNHZ0SobkZl5AxqmJpmTD0z9OYPRcrn4MclzIwEjqFEKRexBzqfYeEp5T0=",
+        "iv": "UFFSU1RVVldYWVpb",
+        "ct": "ia/hfNv0ntrJ/HJnjwXRpfDFX14Z8GjTz1i7SjCTad/9guA4UCHZkMrRwO0W+w2b"
+      },
+      {
+        "id": "33333333-3333-4333-8333-333333333333",
+        "type": "passkey-prf",
+        "label": "Test browser",
+        "createdAt": "2026-11-16T00:00:00Z",
+        "credentialId": "dGVzdC1jcmVkZW50aWFs",
+        "rpId": "localhost",
+        "prfSalt": "gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp8=",
+        "salt": "YGFiY2RlZmdoaWprbG1ubw==",
+        "iv": "cHFyc3R1dnd4eXp7",
+        "ct": "WpHmp5aKLMkOUWqmsVYMxFX34eUWu11SMZDCJHC5haLCM38YH5GUJNvtgq3b2RoC"
+      },
+      {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "type": "recovery",
+        "label": "Recovery key",
+        "createdAt": "2026-11-16T00:00:00Z",
+        "salt": "ICEiIyQlJicoKSorLC0uLw==",
+        "iv": "MDEyMzQ1Njc4OTo7",
+        "ct": "yuTURw62iuPY9QMD2ooFBfVNcPsyejAoHEu32Xf9nc6NTFtKKcdHrFXL0L46AkhX"
+      }
+    ],
+    "items": [
+      {
+        "id": "aaaaaaaa-0000-4000-8000-000000000001",
+        "iv": "oKGio6Slpqeoqaqr",
+        "ct": "rK1yRpKOvhdbAS6K7J4c1Jt+gauJTb8PsLmN9Z+nDIF69B0npSMGjco3yew1iEi+jG49RMbZIyLpRLDQR+ntzOm0miknz9i0Bg8eXpUzdY3AbNY2YyknGcqY4D0Z/Mijlts3qwF18onmDzAQrTklbGMpl+DGOYJBhh/CWY/hEntmDwqd",
+        "createdAt": "2026-11-16T00:00:00Z",
+        "updatedAt": "2026-11-16T00:00:00Z"
+      },
+      {
+        "id": "aaaaaaaa-0000-4000-8000-000000000002",
+        "iv": "rK2ur7CxsrO0tba3",
+        "ct": "To42baUZSk+OKn/7rnAPaR1RNfhISg+R08vs+oUE1vQEvrdb3ZSBSX8BnW1emk4ECcm067qveoOburXrhZycCswSxNSQ4+FusDGT7wnZ6aN69XwiDfqe0krAF3cWUymYp52rUVnu/uejqAyuZtJpAdCy9htUWSY4RlO9ZRjikH05QH/Bd62Z2bN/lDlzCj2LXLh95kiPvxoGbtcSx5SJKqucBsfOR9/1TI+0/ShLZOMsMNkvzeeSzE+kgr5p3sLlJ3VOgqQj",
+        "createdAt": "2026-11-16T00:00:00Z",
+        "updatedAt": "2026-11-16T00:00:00Z"
+      },
+      {
+        "id": "aaaaaaaa-0000-4000-8000-000000000003",
+        "iv": "uLm6u7y9vr/AwcLD",
+        "ct": "ILu/yx8E5qVPV6GzIP9hduZvsO4g+xmBZAP4Ma/xT6ej8+jqoLffwPpJXDy8vjxCZR7fhWXheh0tfn5p2RXtSdE8gHCd0/2AF0gK1KTJ0fyVaiwNaM5olpoM921SKdb7WcekS8SjHfded8lY+VSsO12H3yE7XazKSv1g7gOgWTbaIcRPHmF70RCyihioMTwrs4Ab7o/PEwr1ltY8dOnw47isRl+ZsBIDvX3CnSA39SyP63dJMjlUJuwkeP22ig1bkPHLAk5qR/W7X2OD/WtAse8BNKnx1Posf3TIzqmhMQtRpB8wy9u2tc4bbzftCv5BZm8P7eJ/E+lPuPwnmkE=",
+        "createdAt": "2026-11-16T00:00:00Z",
+        "updatedAt": "2026-11-16T00:00:00Z"
+      },
+      {
+        "id": "aaaaaaaa-0000-4000-8000-000000000004",
+        "iv": "xMXGx8jJysvMzc7P",
+        "ct": "reLi0nGVAPP8vfoazLn++x9DAslz3wN/ndypHcPjvvMNmUkHlmHqGDYS9vRCxaTSuTQLdJvp2var/ISbkbmZS7QEpSmUW6RwtPCLF10lHJhkN97eEps0JdQRq6TQdOzFk23K4Xvm2sy75i5wX5D6fMqkIS93YFwwVuoFzQsedrC6n9ymMSIgO6rIq92AuwXmMrYf8exgI7xeQSPmnwDmUA3qUc5vf6Aod8XXIehByQsHPc9KTh+1d6P6r3W7emrq43q/hvC+Fb+LqbPB4iAtxzjNeCF/YJTqy8JrbV/s6j3Z1eTHC+8gS7to4LwmKCcPIdHtnLJcV12Qox4F3R0oSybS8dDhrXfJp/Ijpp/AOAVzlxQZd4s=",
+        "createdAt": "2026-11-16T00:00:00Z",
+        "updatedAt": "2026-11-16T00:00:00Z"
+      }
+    ],
+    "blobs": {
+      "bbbbbbbb-0000-4000-8000-000000000001": {
+        "iv": "4OHi4+Tl5ufo6err",
+        "ct": "ioiNL/c+muS1t5OUvp9xAedTwP2/Qd+Mtvw0v1eY0L/9JO/nqxOuNIJfTI4="
+      }
+    }
+  }
+}

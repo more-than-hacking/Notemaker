@@ -2,8 +2,11 @@
 # Build Notemaker.app for macOS.
 #
 #  • If full Xcode is installed, builds Notemaker.xcodeproj with xcodebuild.
-#  • Otherwise compiles the sources directly with swiftc from the Command Line Tools
+#  • Otherwise compiles Notemaker/Core + Notemaker/Shell directly with swiftc from the Command Line Tools
 #    (automatically working around the CLT "redefinition of module 'SwiftBridging'" bug).
+#
+# The app is a native AppKit + WKWebView shell around the web UI (docs/DESKTOP_BRIDGE.md); the web files
+# (index.html, app.js, styles.css, js/, web-icons/, manifest.webmanifest) are copied to Contents/Resources/web.
 #
 # Output: build_output/Notemaker.app (ad-hoc signed)
 #   ./build.sh            release build
@@ -15,7 +18,7 @@ ROOT="$(pwd)"
 APP_NAME="Notemaker"
 OUT_DIR="$ROOT/build_output"
 APP="$OUT_DIR/$APP_NAME.app"
-VERSION="2.0.0"
+VERSION="2.1.0"
 BUILD_NUMBER="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)"
 
 OPT="-O"; FORCE_SWIFTC=0
@@ -43,7 +46,7 @@ else
   echo "→ Using swiftc (Command Line Tools)"
   source "$ROOT/tools/swiftc-env.sh"
   mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-  SOURCES=$(find "$ROOT/Notemaker" -name '*.swift' | sort)
+  SOURCES=$(find "$ROOT/Notemaker/Core" "$ROOT/Notemaker/Shell" -name '*.swift' | sort)
   # shellcheck disable=SC2086
   nm_swiftc -parse-as-library $OPT -module-name "$APP_NAME" $SOURCES -o "$APP/Contents/MacOS/$APP_NAME"
 
@@ -81,6 +84,20 @@ else
 PLIST
   printf 'APPL????' > "$APP/Contents/PkgInfo"
 fi
+
+echo "→ Bundling web UI"
+RES="$APP/Contents/Resources"
+rm -rf "$RES/web" "$RES/selftest"
+mkdir -p "$RES/web" "$RES/selftest"
+for f in index.html app.js styles.css manifest.webmanifest; do
+  [ -f "$ROOT/$f" ] && cp "$ROOT/$f" "$RES/web/"
+done
+for d in js web-icons; do
+  [ -d "$ROOT/$d" ] && cp -R "$ROOT/$d" "$RES/web/"
+done
+[ -f "$RES/web/index.html" ] || { echo "❌ index.html missing"; exit 1; }
+cp "$ROOT/Notemaker/Shell/selftest/selftest.html" "$RES/selftest/"
+cp "$ROOT/assets/Notemaker.icns" "$RES/Notemaker.icns"
 
 echo "→ Ad-hoc signing"
 codesign --force --deep -s - "$APP"

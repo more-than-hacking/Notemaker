@@ -9,6 +9,11 @@
     const REVIEW_WINDOW_MIN = 180; // auto-prompt the review within 3 h after reviewTime
 
     NM.notify = function (title, body, tag) {
+        if (NM.native) {
+            NM.native.request('notify.show', { title, body }).catch(() => NM.toast(title + ' — ' + body, 'reminder', 10000));
+            if (document.visibilityState === 'visible') NM.toast(title + ' — ' + body, 'reminder', 8000);
+            return;
+        }
         const perm = NM.notifyPermission();
         if (perm === 'granted') {
             const opts = { body, tag: tag || undefined, icon: 'web-icons/icon-192.png', badge: 'web-icons/icon-192.png' };
@@ -70,10 +75,12 @@
         const n = NM.runRollover();
         if (n) NM.toast(n + ' unfinished task(s) rolled over to today');
         NM.render();
+        if (NM.syncNative) NM.syncNative(true);
     }
 
     function tick() {
-        try { checkDayChange(); checkReminders(); checkReview(); } catch (e) { console.error('Notemaker scheduler', e); }
+        // desktop shell: reminders are scheduled natively via notify.sync (they fire even when the app is closed)
+        try { checkDayChange(); if (!NM.native) checkReminders(); checkReview(); } catch (e) { console.error('Notemaker scheduler', e); }
     }
     NM.startScheduler = function () {
         tick();

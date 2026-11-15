@@ -3,7 +3,7 @@
 (function () {
     'use strict';
     const NM = window.NM, C = NM.C, S = NM.state, $ = NM.$, $$ = NM.$$;
-    const VIEWS = ['day', 'calendar', 'planner', 'board', 'habits', 'insights', 'settings'];
+    const VIEWS = ['day', 'calendar', 'planner', 'board', 'habits', 'insights', 'settings', 'vault'];
     const DATE_VIEWS = new Set(['day', 'planner', 'board', 'calendar']);
 
     // ---------------- render ----------------
@@ -72,7 +72,8 @@
         window.addEventListener('storage', (e) => {
             if (e.key !== 'notemaker_v2' || !e.newValue) return;
             if (NM.notes && NM.notes.isEditing()) return;
-            try { S.doc = C.normalizeDoc(JSON.parse(e.newValue)); NM.applyTheme(); NM.render(); } catch (err) { /* ignore */ }
+            const oldVault = JSON.stringify(S.doc.vault);
+            try { S.doc = C.normalizeDoc(JSON.parse(e.newValue)); NM.vault.onDocChanged(oldVault); NM.applyTheme(); NM.render(); } catch (err) { /* ignore */ }
         });
     }
 
@@ -105,7 +106,7 @@
             case 't': case 'T': e.preventDefault(); NM.goToday(); break;
             case '?': e.preventDefault(); NM.openHelp(); break;
             default:
-                if (/^[1-7]$/.test(e.key)) { e.preventDefault(); NM.setView(VIEWS[+e.key - 1]); }
+                if (/^[1-8]$/.test(e.key)) { e.preventDefault(); NM.setView(VIEWS[+e.key - 1]); }
         }
     }
 
@@ -118,8 +119,61 @@
         });
     }
 
-    function start() {
-        NM.load();
+    // ---------------- desktop shell integration (all no-ops in a browser) ----------------
+    const NC = window.NotemakerNativeClient;
+    let syncTimer = null, lastReminders = null, lastBadge = null;
+    /** Push reminders (notify.sync, next 14 days, max 60) and the Dock badge to the shell when they changed. */
+    NM.syncNative = function (now) {
+        if (!NM.native) return;
+        clearTimeout(syncTimer);
+        const run = () => {
+            const items = NC.reminderSchedule(S.doc, new Date(), C);
+            const json = JSON.stringify(items);
+            if (json !== lastReminders) {
+                lastReminders = json;
+                NM.native.request('notify.sync', { items }).catch((e) => console.warn('notify.sync failed', e));
+            }
+            const badge = NC.remainingCount(S.doc, C.localToday(), C);
+            if (badge !== lastBadge) {
+                lastBadge = badge;
+                NM.native.request('app.setBadge', { count: badge }).catch(() => { /* */ });
+            }
+        };
+        if (now) run(); else syncTimer = setTimeout(run, 800);
+    };
+    NM.afterSave = () => NM.syncNative();
+
+    const MENU = {
+        newTask: () => NM.focusQuickAdd(), palette: () => NM.openPalette(), search: () => NM.openSearch(),
+        today: () => NM.goToday(), prevDay: () => NM.moveDate(-1), nextDay: () => NM.moveDate(1),
+        export: () => NM.exportJson(), import: () => $('#importFile').click(), review: () => NM.openReview(S.date),
+        'focus.toggle': () => { if (NM.focus.state().running) NM.focus.togglePause(); else NM.focus.start(null); },
+        lockVault: () => NM.vault.lock('manual'), undo: () => NM.undoTasks(), redo: () => NM.redoTasks()
+    };
+    function bindNative() {
+        const nat = NM.native;
+        if (!nat) return;
+        document.documentElement.classList.add('desktop');
+        nat.on('menu', (d) => {
+            const cmd = String(d.command || '');
+            if (cmd.startsWith('view:')) { const v = cmd.slice(5); if (VIEWS.includes(v)) { while (NM.closeTopOverlay()) { /* */ } NM.setView(v); } return; }
+            if (MENU[cmd]) MENU[cmd]();
+        });
+        nat.on('openDay', (d) => { if (C.isValidDate(d.day)) { while (NM.closeTopOverlay()) { /* */ } NM.setDate(d.day); NM.setView('day'); NM.setDayTab('tasks'); } });
+        nat.on('beforeQuit', () => { if (NM.beforeDateChange) NM.beforeDateChange(); NM.save(); NM.persist.flush(); });
+        window.addEventListener('beforeunload', () => { NM.persist.flush(); });
+        // external links (rendered notes, vault website buttons) open in the default browser
+        document.addEventListener('click', (e) => {
+            const a = e.target.closest && e.target.closest('a[href]');
+            if (!a || a.classList.contains('wikilink')) return;
+            const href = a.getAttribute('href');
+            if (/^(https?:|mailto:)/i.test(href)) { e.preventDefault(); NM.openExternal(href); }
+        });
+        nat.request('notify.permission').then((r) => { S.nativeNotify = (r && r.status) || 'default'; }).catch(() => { /* */ });
+    }
+
+    async function start() {
+        await NM.load();
         S.today = C.localToday();
         S.date = S.today;
         const rolled = NM.runRollover();
@@ -129,15 +183,24 @@
         NM.notesInit();
         bind();
         document.addEventListener('keydown', onKey);
+        bindNative();
         NM.render();
+        document.body.classList.remove('booting');
         NM.focus.restore();
         NM.startScheduler();
-        if (S.migratedFromV1) NM.toast('Upgraded to Notemaker v2 — your v1 tasks and notes were migrated (the v1 copy is kept as a backup).', 'ok', 8000);
+        NM.syncNative(true);
+        if (S.migratedToDesktop) NM.toast('Your browser data was copied into the desktop app (data.json).', 'ok', 8000);
+        else if (S.migratedFromV1) NM.toast('Upgraded to Notemaker v2 — your v1 tasks and notes were migrated (the v1 copy is kept as a backup).', 'ok', 8000);
         if (S.loadError) NM.toast(S.loadError, 'error', 10000);
         if (rolled) NM.toast(rolled + ' unfinished task(s) rolled over to today', '', 5000);
     }
 
+    const boot = () => start().catch((e) => {
+        console.error('Notemaker failed to start', e);
+        document.body.classList.remove('booting');
+        if (NM.toast) NM.toast('Notemaker failed to start: ' + e.message, 'error', 15000);
+    });
     registerServiceWorker();
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
-    else start();
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+    else boot();
 })();

@@ -24,9 +24,14 @@
     function setSetting(k, v) { NM.update(() => { S.doc.settings[k] = v; S.doc.settings = C.normalizeSettings(S.doc.settings); }); NM.applyTheme(); }
 
     // ---------------- export / import ----------------
-    NM.exportJson = function () {
+    NM.exportJson = async function () {
         if (NM.beforeDateChange) NM.beforeDateChange();
         const data = C.exportDoc(S.doc);
+        if (data.vault && NM.vault) {
+            const r = await NM.vault.blobsForExport();
+            if (r === null) return; // cancelled
+            data.vault.blobs = r;
+        }
         NM.download('notemaker_backup_' + S.today + '.json', JSON.stringify(data, null, 2));
         NM.toast('Backup exported (' + data.tasks.length + ' tasks, ' + Object.keys(data.notes).length + ' notes)', 'ok');
     };
@@ -35,9 +40,11 @@
         const reader = new FileReader();
         reader.onerror = () => NM.toast('Could not read the file', 'error');
         reader.onload = async () => {
-            let incoming;
+            let incoming, incomingBlobs = {};
             try {
-                incoming = C.importToDoc(JSON.parse(reader.result));
+                const parsed = JSON.parse(reader.result);
+                incoming = C.importToDoc(parsed);
+                if (parsed && parsed.vault && window.NotemakerVault) incomingBlobs = window.NotemakerVault.extractBlobs(parsed.vault);
             } catch (e) {
                 NM.toast('Import failed: ' + (e instanceof SyntaxError ? 'not valid JSON' : e.message), 'error', 7000);
                 return;
@@ -50,20 +57,25 @@
                 h('ul', { class: 'import-list' },
                     h('li', null, h('b', null, 'Merge: '), preview.tasksAdded + ' new tasks (' + preview.tasksSkipped + ' duplicates skipped), ' + preview.notesAdded + ' new notes, ' + preview.notesMerged + ' merged, ' +
                         preview.habitsAdded + ' habits, ' + preview.templatesAdded + ' templates. Your settings are kept.'),
-                    h('li', null, h('b', null, 'Replace: '), 'your current data (' + S.doc.tasks.length + ' tasks, ' + Object.keys(S.doc.notes).length + ' notes) is replaced by the file, including settings.')));
+                    h('li', null, h('b', null, 'Replace: '), 'your current data (' + S.doc.tasks.length + ' tasks, ' + Object.keys(S.doc.notes).length + ' notes) is replaced by the file, including settings.'),
+                    incoming.vault ? h('li', null, h('b', null, 'Vault: '), 'the file contains an encrypted vault (' + incoming.vault.items.length + ' items). ' +
+                        (S.doc.vault ? 'Merge keeps your current vault; Replace swaps it for the file’s vault.' : 'It will be added; open it with its recovery key or a key for this device.')) : null));
             const choice = await NM.chooseWithBody('Import backup', body,
                 [{ label: 'Cancel', value: null }, { label: 'Replace all', value: 'replace', kind: 'danger' }, { label: 'Merge', value: 'merge', kind: 'primary' }]);
             if (!choice) return;
             if (choice === 'replace' && !(await NM.confirm('Replace ALL current data with this backup? (You can undo right after.)', 'Replace', true))) return;
             const before = JSON.stringify(S.doc);
             if (NM.beforeDateChange) NM.beforeDateChange();
+            const vaultChanges = incoming.vault && (choice === 'replace' || !S.doc.vault);
+            if (vaultChanges && NM.vault) NM.vault.lock('import');
             NM.update(() => {
                 if (choice === 'replace') { S.doc = incoming; S.unlocked = {}; S.passcode = null; }
                 else S.doc = C.normalizeDoc(C.mergeDocs(S.doc, incoming).doc);
             });
+            if (vaultChanges && NM.vault) await NM.vault.importBlobs(incomingBlobs, choice === 'replace');
             NM.applyTheme();
             NM.toast(choice === 'replace' ? 'Data replaced from backup' : 'Imported: ' + preview.tasksAdded + ' tasks, ' + (preview.notesAdded + preview.notesMerged) + ' notes', 'ok', 6000,
-                { label: 'Undo import', fn: () => { NM.update(() => { S.doc = C.normalizeDoc(JSON.parse(before)); }); NM.applyTheme(); NM.toast('Import undone'); } });
+                { label: 'Undo import', fn: () => { if (NM.vault) NM.vault.lock('import'); NM.update(() => { S.doc = C.normalizeDoc(JSON.parse(before)); }); NM.applyTheme(); NM.toast('Import undone'); } });
         };
         reader.readAsText(file);
     };
@@ -174,10 +186,18 @@
 
     // ---------------- notifications ----------------
     NM.notifyPermission = function () {
+        if (NM.native) return S.nativeNotify || 'default';
         if (!('Notification' in window)) return 'unsupported';
         return Notification.permission;
     };
     NM.requestNotifications = async function () {
+        if (NM.native) {
+            try { const r = await NM.native.request('notify.request'); S.nativeNotify = (r && r.status) || 'default'; } catch (e) { S.nativeNotify = 'default'; }
+            NM.toast(S.nativeNotify === 'granted' ? 'Notifications enabled' : 'Notifications are off — enable them in System Settings › Notifications.', S.nativeNotify === 'granted' ? 'ok' : 'error', 6000);
+            if (NM.syncNative) NM.syncNative(true);
+            NM.render();
+            return;
+        }
         if (!('Notification' in window)) { NM.toast('Notifications are not supported in this browser — reminders will show in-app.', 'error'); return; }
         try {
             const p = await Notification.requestPermission();
@@ -234,6 +254,11 @@
                         h('button', { class: 'btn ghost small', type: 'button', onclick: removePasscode }, 'Remove'),
                         S.passcode ? h('button', { class: 'btn ghost small', type: 'button', onclick: () => { S.passcode = null; S.unlocked = {}; NM.toast('All private notes locked'); NM.render(); } }, 'Lock all now') : null)
                         : h('button', { class: 'btn primary small', type: 'button', onclick: setPasscode }, NM.icon('lock'), ' Set passcode'))),
+            sec('vaultSection', 'Vault',
+                row('Auto-lock after', 'Minutes of inactivity (also when the window is hidden that long, and on ' + (NM.native ? 'sleep, screen lock and quit' : 'closing the tab') + ').',
+                    h('div', { class: 'inline' }, numInput('vaultAutoLockMinutes', 1, 120), 'min')),
+                row('Vault', S.doc.vault ? S.doc.vault.items.length + ' encrypted item(s) · ' + S.doc.vault.keyslots.length + ' key(s) · ' + S.doc.vault.mode : 'Not set up yet.',
+                    h('button', { class: 'btn small', type: 'button', onclick: () => NM.setView('vault') }, NM.icon('lock'), ' Open vault'))),
             sec('templatesSection', 'Note templates',
                 h('div', { class: 'template-list' }, S.doc.templates.map((t) => h('div', { class: 'template-row' },
                     h('span', { class: 'template-name' }, t.name), h('span', { class: 'muted small template-snip' }, t.markdown.split('\n')[0].slice(0, 60)),
@@ -251,7 +276,7 @@
                     h('button', { class: 'btn small', type: 'button', onclick: () => document.getElementById('importFile').click() }, NM.icon('upload'), ' Import'))),
                 row('Markdown', 'Tasks as checkboxes plus the note, for the selected day or week.', h('button', { class: 'btn small', type: 'button', onclick: () => NM.exportMarkdown() }, '⬇ Export .md')),
                 row('Stored in this browser', S.doc.tasks.length + ' tasks · ' + Object.keys(S.doc.notes).length + ' notes · ' + S.doc.habits.length + ' habits · ' + S.doc.focusSessions.length + ' focus sessions · ~' +
-                    Math.round((NM.ls.get('notemaker_v2') || '').length / 1024) + ' KB' + (NM.ls.get('notemaker_tasks') ? ' · v1 data kept as backup' : ''), null))));
+                    Math.round(JSON.stringify(S.doc).length / 1024) + ' KB' + (NM.native ? ' (data.json)' : '') + (NM.ls.get('notemaker_tasks') ? ' · v1 data kept as backup' : ''), null))));
     }
 
     NM.views.settings = { title: () => 'Settings', subtitle: () => '', render };

@@ -2,7 +2,7 @@ import Foundation
 
 /// A loss-less representation of arbitrary JSON, used to carry fields this app
 /// does not know about (e.g. added by the web app) through a decode → encode cycle.
-enum JSONValue: Codable, Equatable {
+enum JSONValue: Codable, Equatable, Sendable {
     case null
     case bool(Bool)
     case number(Double)

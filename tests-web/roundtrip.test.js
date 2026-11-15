@@ -25,7 +25,7 @@ test('sample-v2.json is already canonical (exporter output == normalised)', () =
 test('sample-v2.json has the required top-level shape and content', () => {
     assert.equal(sample.app, 'notemaker');
     assert.equal(sample.version, 2);
-    assert.deepEqual(Object.keys(sample), ['app', 'version', 'exportedAt', 'tasks', 'notes', 'habits', 'templates', 'focusSessions', 'settings']);
+    assert.deepEqual(Object.keys(sample), ['app', 'version', 'exportedAt', 'tasks', 'notes', 'habits', 'templates', 'focusSessions', 'settings', 'vault']);
     assert.ok(sample.tasks.some((t) => t.recurrence && t.recurrence.freq === 'weekly' && t.recurrence.interval === 2));
     assert.ok(sample.tasks.some((t) => t.timeBlock));
     assert.ok(sample.tasks.some((t) => t.reminder));
