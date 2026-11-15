@@ -1,113 +1,157 @@
-# Notemaker - Web App
+<p align="center"><img src="assets/icon-1024.png" width="112" alt="Notemaker icon"></p>
 
-A beautiful, user-friendly web app for managing your daily notes and tasks with automatic date organization.
+<h1 align="center">Notemaker</h1>
+
+<p align="center">Daily tasks, notes, habits and a hardware-protected vault —<br>
+one app that runs in your browser and as a native Mac app.</p>
+
+<p align="center">
+  <img src="docs/screenshots/detail-login-dark-1280.png" width="760" alt="Notemaker vault with a saved login">
+</p>
 
 ## Features
 
-- ✅ **Daily Task Management**: Add, complete, and manage tasks for any date
-- 📝 **Daily Notes**: Take notes for each day with automatic organization
-- 🔄 **One-Click Forward**: Forward incomplete tasks to the next day with a single click
-- 📅 **Date-Based Organization**: Automatically organize tasks and notes by date
-- 🔍 **Task Filtering**: Filter tasks by All, Completed, or Incomplete
-- 📊 **Daily Stats**: View task completion statistics for each day
-- 💾 **Auto-Save**: All data is automatically saved in your browser (localStorage)
-- 📤 **Export Data**: Export all your tasks and notes as a JSON backup file
-- 📥 **Import Data**: Import your backup file to restore data on any device
-- 📱 **Responsive**: Works on desktop, tablet, and mobile devices
+**Plan your day**
+- Tasks with subtasks, priorities (`!high`), colored `#tags`, notes and drag-to-reorder
+- **Quick add** in plain language: `Call Raj tomorrow 3pm #work !high`, `Gym every mon ~2`, `Pay rent every month`
+- Recurring tasks (daily, weekdays, weekly, monthly, every N), reminders, smart rollover of unfinished tasks, snooze
+- Views: **Day**, **Calendar** (completion heatmap), **Planner** (drag tasks onto an hourly timeline),
+  **Board** (To do / Doing / Done), **Habits** (streaks), **Insights** (365-day heatmap, streaks, focus time, top tags)
+- **Focus timer** (Pomodoro) per task, **Daily review**, **⌘K command palette**, global search, keyboard shortcuts
 
-## How to Use
+**Write**
+- Markdown notes per day with toolbar, live preview, tables, `[[YYYY-MM-DD]]` links with backlinks, templates
+- Private notes with a passcode (AES-256-GCM)
+- Export a day or week as Markdown; full JSON backup / import (the web and Mac apps share one format)
 
-### Option 1: Open Directly in Browser
+**Vault**: passwords, cards & IDs, secure notes and files, encrypted with a key held in **hardware**
+- Mac: the **Secure Enclave**, unlocked with Touch ID · Browser: a **passkey** (Touch ID or a security key)
+- Optional printable **recovery key** to move the vault between devices or recover it
+- Password generator, strength meter, copy with clipboard auto-clear, auto-lock
 
-1. Simply open `index.html` in your web browser
-   - Double-click the file, or
-   - Right-click → Open With → Your Browser
+| Setup | Recovery key | Locked | Phone width |
+|---|---|---|---|
+| <img src="docs/screenshots/setup-dark-1280.png" width="220"> | <img src="docs/screenshots/recovery-key-light-1280.png" width="220"> | <img src="docs/screenshots/unlock-dark-1280.png" width="220"> | <img src="docs/screenshots/list-light-390.png" width="110"> |
 
-2. Start using it immediately!
+---
 
-### Option 2: Use a Local Server (Recommended)
+## Install
 
-For better performance and to avoid CORS issues:
+### Option A: macOS app (recommended on a Mac)
+
+Requires **macOS 14 (Sonoma) or later** and Apple's **Command Line Tools** (full Xcode is *not* needed).
 
 ```bash
-# Using Python 3
-python3 -m http.server 8000
+# 1. Command Line Tools (skip if `xcode-select -p` already prints a path)
+xcode-select --install
 
-# Using Python 2
-python -m SimpleHTTPServer 8000
+# 2. Get the code
+git clone https://github.com/more-than-hacking/Notemaker.git
+cd Notemaker
 
-# Using Node.js (if you have http-server installed)
-npx http-server
+# 3. Build the app (first build takes a few minutes; later builds ~30 s)
+./build.sh
+
+# 4. Install
+cp -R build_output/Notemaker.app /Applications/
+open /Applications/Notemaker.app
 ```
 
-Then open: `http://localhost:8000`
+Prefer a disk image? `./build_and_create_dmg.sh` creates `Notemaker.dmg`. Open it and drag **Notemaker** to **Applications**.
 
-## Usage Guide
+**First launch**
+1. The app is self-signed (not notarized). If macOS says it can't be opened: right-click **Notemaker** → **Open** → **Open**
+   (or System Settings → Privacy & Security → **Open Anyway**). Only needed once.
+2. Allow **notifications** when asked (Settings → Reminders & notifications) so reminders arrive even when the app is closed.
+3. The first time you unlock the vault after installing or rebuilding, macOS may ask to use the keychain.
+   Click **Always Allow**.
 
-### Managing Tasks
+The app builds for your Mac's architecture (Apple Silicon or Intel). Vault hardware keys need a Mac with a
+Secure Enclave (Apple Silicon or a T2 chip); other Macs can still use the vault with a recovery key.
 
-1. **Select a Date**: Use the date picker or quick navigation buttons
-2. **Add Tasks**: Type in the task field and press Enter or click "Add Task"
-3. **Complete Tasks**: Click on a task to mark it complete/incomplete
-4. **Delete Tasks**: Hover over a task and click "Delete"
-5. **Filter Tasks**: Use the filter dropdown to show All, Completed, or Incomplete tasks
+### Option B: in the browser
 
-### Forwarding Tasks
+**Quick look**: open `index.html` directly (double-click). Everything works except the vault's passkeys,
+which browsers only allow on a real web address.
 
-1. When you have incomplete tasks, a "Forward Incomplete Tasks to Tomorrow" button appears
-2. Click it to move all incomplete tasks to the next day
-3. Confirm the action in the dialog
+**Full version (vault + installable app)**: serve the folder locally:
 
-### Taking Notes
+```bash
+cd Notemaker
+python3 -m http.server 8000
+```
 
-1. Switch to the "Notes" tab
-2. Start typing - notes are automatically saved
-3. Each date has its own note that persists
+Open **http://localhost:8000** in **Safari 18+** or **Chrome 116+**. To install it as an app:
+Chrome → address bar **Install** icon · Safari → **File → Add to Dock**.
 
-### Navigation
+The vault's passkey must support the PRF extension: iCloud Keychain passkeys (Touch ID), Google Password Manager,
+or a FIDO2 security key. If yours doesn't, the app tells you, and you can still open a vault with its recovery key.
 
-- **Previous/Next**: Navigate between days
-- **Today**: Jump to today's date
-- **Date Picker**: Select any specific date
+---
 
-### Export & Import Data
+## Where your data lives
 
-**Export Data:**
-1. Click "📤 Export Data" button in the sidebar
-2. A JSON file will be downloaded with all your tasks and notes
-3. File name: `notemaker_backup_[date].json`
+| | Location |
+|---|---|
+| Mac app | `~/Library/Application Support/Notemaker/data.json` (+ `vault-blobs/` for encrypted vault files) |
+| Vault hardware key (Mac) | Inside the Secure Enclave; only an encrypted handle is kept in your login Keychain |
+| Browser | The browser's local storage for this site (+ IndexedDB for encrypted vault files) |
 
-**Import Data:**
-1. Click "📥 Import Data" button in the sidebar
-2. Select your backup JSON file
-3. Review the import preview (shows current data, imported data, and how many new items will be added)
-4. Confirm to merge the imported data with your existing data
+Nothing is sent to any server. **Back up** with **Export backup** (⇧⌘E on Mac, Settings → Data in the browser);
+the file opens in either app. Data from Notemaker v1 (web or Mac) is migrated automatically on first launch.
 
-**Merge Behavior:**
-- **Tasks**: New tasks are added, existing tasks with the same ID are kept (no duplicates)
-- **Notes**: Notes for the same date are merged together with a separator, new dates are added
-- **No Data Loss**: Your existing data is always preserved, only new items are added
+## The vault and your security, honestly
 
-**Use Case:**
-- Export your data from one device
-- Transfer the JSON file to another device (via email, cloud storage, USB, etc.)
-- Import the file on the new device to restore all your tasks and notes
+- Items, titles and files are encrypted with AES-256-GCM. The key that unlocks them is wrapped by a hardware key
+  (Secure Enclave or passkey) and, if you chose it, by your recovery key. **No key is stored in any file, backup or
+  server**, so a copied `data.json`, Time Machine backup or export is useless on its own.
+- On a Mac, the Secure Enclave key opens with **Touch ID or your Mac login password**, so use a strong Mac password.
+- **Store the recovery key offline** (printed, or in another password manager), not as a file next to the vault.
+  If you choose *hardware only* and lose the device, the vault cannot be recovered.
+- The vault auto-locks after 5 minutes idle (configurable), on sleep and on screen lock. While it is unlocked,
+  malware running on your Mac could read it, as with any password manager.
+- This is a personal project **without an independent security audit**. The cryptography is tested against shared
+  test vectors (`docs/`), but for very high-value secrets prefer an audited password manager.
 
-## Data Storage
+Formats are documented in [`docs/DATA_FORMAT.md`](docs/DATA_FORMAT.md), [`docs/VAULT_FORMAT.md`](docs/VAULT_FORMAT.md)
+and [`docs/DESKTOP_BRIDGE.md`](docs/DESKTOP_BRIDGE.md).
 
-All data is stored locally in your browser using localStorage. Your tasks and notes are:
-- ✅ Private and never leave your device
-- ✅ Automatically saved as you type
-- ✅ Persisted between browser sessions
+## Keyboard shortcuts
 
-## Browser Compatibility
+| | Mac app | Browser |
+|---|---|---|
+| New task | ⌘N | `n` |
+| Command palette | ⌘K | Ctrl/⌘ K |
+| Search | ⌘F | `/` |
+| Today / previous / next day | ⌘T · ⌘[ · ⌘] | `t` · ← · → |
+| Switch view | ⌘1 … ⌘8 | `1` … `8` |
+| Lock vault | ⇧⌘L | palette → *Lock vault* |
+| All shortcuts | Help menu | `?` |
 
-Works on all modern browsers:
-- Chrome/Edge (recommended)
-- Firefox
-- Safari
-- Opera
+## Troubleshooting
 
-## No Installation Required!
+| Problem | Fix |
+|---|---|
+| `redefinition of module 'SwiftBridging'` while building | Known Command Line Tools issue. `build.sh` detects it and rebuilds with a workaround automatically. |
+| *"Notemaker can't be opened"* | Right-click → **Open** (self-signed app), once. |
+| Reminders don't appear | Allow notifications for Notemaker in System Settings → Notifications. |
+| Vault says passkeys aren't available (browser) | Use `http://localhost:8000` (not `file://`) in Safari 18+ / Chrome 116+. |
+| Vault: "This vault was created on another device" | Unlock with the recovery key, then choose **Add this Mac / this browser**. |
+| Start over (Mac) | Quit Notemaker and move `~/Library/Application Support/Notemaker/data.json` away. |
 
-This is a pure web app - no installation, no Xcode, no build process needed. Just open and use!
+## Development
+
+```bash
+node --test tests-web/                    # web tests (Node 20+)
+./Tests-mac/run.sh                        # macOS core + crypto tests (no Xcode needed)
+./build.sh && build_output/Notemaker.app/Contents/MacOS/Notemaker --bridge-selftest   # native bridge self-test
+```
+
+The UI is plain HTML/CSS/JS (`index.html`, `styles.css`, `app.js`, `js/`) with no build step and no dependencies.
+The Mac app (`Notemaker/Shell/`) is an AppKit window with a WKWebView that loads the same files and adds native
+features through a small bridge. See [`SETUP.md`](SETUP.md) for the source layout and debugging flags, and
+[`INSTALL_INSTRUCTIONS.md`](INSTALL_INSTRUCTIONS.md) for more install details.
+
+## License
+
+[MIT](LICENSE) © 2026 More-Than-Hacking (MTH). The app icon is original artwork included under the same license.
