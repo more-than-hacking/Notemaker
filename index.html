@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notemaker - Daily Notes & Tasks</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>📝 Notemaker</h1>
+                <div class="theme-selector">
+                    <button class="theme-btn ocean active" data-theme="ocean" title="Ocean Blue"></button>
+                    <button class="theme-btn sunset" data-theme="sunset" title="Sunset"></button>
+                    <button class="theme-btn forest" data-theme="forest" title="Forest"></button>
+                    <button class="theme-btn purple" data-theme="purple" title="Purple"></button>
+                    <button class="theme-btn dark" data-theme="dark" title="Dark"></button>
+                </div>
+            </div>
+            
+            <div class="sidebar-section">
+                <h2>Date Selection</h2>
+                <input type="date" id="datePicker" class="date-picker">
+            </div>
+            
+            <div class="sidebar-section">
+                <h2>Quick Navigation</h2>
+                <div class="nav-buttons">
+                    <button id="prevDay" class="nav-btn">← Previous</button>
+                    <button id="todayBtn" class="nav-btn">Today</button>
+                    <button id="nextDay" class="nav-btn">Next →</button>
+                </div>
+            </div>
+            
+            <div class="sidebar-section">
+                <h2>Filter Tasks</h2>
+                <select id="taskFilter" class="filter-select">
+                    <option value="all">All Tasks</option>
+                    <option value="completed">Completed</option>
+                    <option value="incomplete">Incomplete</option>
+                </select>
+            </div>
+            
+            <div class="sidebar-section">
+                <button id="forwardTasks" class="forward-btn" style="display: none;">
+                    ⏭️ Forward Incomplete Tasks to Tomorrow
+                </button>
+            </div>
+            
+            <div class="sidebar-section">
+                <h2>Data Management</h2>
+                <div class="data-buttons">
+                    <button id="exportBtn" class="data-btn export-btn">
+                        📤 Export Data
+                    </button>
+                    <button id="importBtn" class="data-btn import-btn">
+                        📥 Import Data
+                    </button>
+                </div>
+                <input type="file" id="importFile" accept=".json" style="display: none;">
+            </div>
+            
+            <div class="sidebar-section stats">
+                <h2>Today's Stats</h2>
+                <div class="stat-item">
+                    <span>Total:</span>
+                    <span id="totalTasks">0</span>
+                </div>
+                <div class="stat-item">
+                    <span>Completed:</span>
+                    <span id="completedTasks">0</span>
+                </div>
+                <div class="stat-item">
+                    <span>Remaining:</span>
+                    <span id="remainingTasks">0</span>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="tasks">✅ Tasks</button>
+                <button class="tab-btn" data-tab="notes">📝 Notes</button>
+            </div>
+            
+            <!-- Tasks Tab -->
+            <div id="tasksTab" class="tab-content active">
+                <div class="tasks-toolbar">
+                    <button class="format-btn" id="undoTaskBtn" title="Undo">↶ Undo</button>
+                    <button class="format-btn" id="redoTaskBtn" title="Redo">↷ Redo</button>
+                </div>
+                <div class="add-task-section">
+                    <input 
+                        type="text" 
+                        id="newTaskInput" 
+                        class="task-input" 
+                        placeholder="Add a new task..."
+                        onkeypress="if(event.key === 'Enter') addTask()"
+                    >
+                    <button id="addTaskBtn" class="add-btn" onclick="addTask()">Add Task</button>
+                </div>
+                
+                <div id="tasksList" class="tasks-list">
+                    <!-- Tasks will be dynamically added here -->
+                </div>
+                
+                <div id="emptyState" class="empty-state" style="display: none;">
+                    <div class="empty-icon">📋</div>
+                    <p>No tasks for this date</p>
+                </div>
+            </div>
+            
+            <!-- Notes Tab -->
+            <div id="notesTab" class="tab-content">
+                <div class="notes-toolbar">
+                    <div class="toolbar-left">
+                        <button class="edit-toggle-btn" id="editToggleBtn" title="Click to Edit">
+                            ✏️ Edit
+                        </button>
+                        <button class="save-btn" id="saveBtn" style="display: none;" title="Save and Lock">
+                            💾 Save & Lock
+                        </button>
+                        <div class="toolbar-separator"></div>
+                        <button class="format-btn" id="undoBtn" title="Undo">↶ Undo</button>
+                        <button class="format-btn" id="redoBtn" title="Redo">↷ Redo</button>
+                        <div class="toolbar-separator"></div>
+                        <button class="format-btn" id="boldBtn" title="Bold">**B**</button>
+                        <button class="format-btn" id="italicBtn" title="Italic">*I*</button>
+                        <button class="format-btn" id="codeBtn" title="Code">`code`</button>
+                        <button class="format-btn" id="linkBtn" title="Link">[Link](url)</button>
+                        <button class="format-btn" id="imageBtn" title="Image">![Alt](url)</button>
+                        <div class="toolbar-separator"></div>
+                        <button class="format-btn" id="h1Btn" title="Heading 1"># H1</button>
+                        <button class="format-btn" id="h2Btn" title="Heading 2">## H2</button>
+                        <button class="format-btn" id="h3Btn" title="Heading 3">### H3</button>
+                        <div class="toolbar-separator"></div>
+                        <button class="format-btn" id="ulBtn" title="Unordered List">- List</button>
+                        <button class="format-btn" id="olBtn" title="Ordered List">1. List</button>
+                        <button class="format-btn" id="indentBtn" title="Indent">→ Indent</button>
+                        <button class="format-btn" id="outdentBtn" title="Outdent">← Outdent</button>
+                        <div class="toolbar-separator"></div>
+                        <button class="format-btn" id="blockquoteBtn" title="Blockquote">> Quote</button>
+                        <button class="format-btn" id="hrBtn" title="Horizontal Rule">---</button>
+                        <button class="format-btn" id="tableBtn" title="Table">Table</button>
+                    </div>
+                    <div class="toolbar-right">
+                        <label class="sync-scroll-label">
+                            <input type="checkbox" id="syncScroll" checked>
+                            <span>Sync scroll</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="notes-editor-container">
+                    <div class="notes-editor-wrapper" id="editorWrapper" style="display: none;">
+                        <textarea 
+                            id="notesEditorMd" 
+                            class="notes-editor-md" 
+                            placeholder="Write your notes in Markdown...&#10;&#10;Examples:&#10;# Heading 1&#10;## Heading 2&#10;**Bold** *Italic* ~~Strikethrough~~&#10;- List item&#10;  - Sub-list item&#10;    - Sub-sub-list item&#10;1. Numbered list&#10;  1. Sub-numbered list&#10;&gt; Blockquote&#10;`code` or ```code block```&#10;[Link](https://example.com)&#10;![Image](url)"
+                        ></textarea>
+                        <div id="notesPreview" class="notes-preview"></div>
+                    </div>
+                    <div id="notesPreviewOnly" class="notes-preview-only">
+                        <div id="notesPreviewContent" class="notes-preview-content"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
+
