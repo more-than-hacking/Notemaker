@@ -1,75 +1,32 @@
-# Installation Instructions
+# Installing Notemaker for macOS
 
-## Quick Install (Once Xcode is Installed)
+Requires macOS 14 (Sonoma) or later. **Full Xcode is not required** — the Command Line Tools are enough
+(`xcode-select --install`).
 
-### Step 1: Install Xcode (Required)
-
-You need Xcode to build the app. It's free from the App Store:
-
-1. Open **App Store** on your Mac
-2. Search for **"Xcode"**
-3. Click **"Get"** or **"Install"** (it's free but large ~15GB)
-4. Wait for installation to complete
-5. Open Xcode once and accept the license agreement
-
-### Step 2: Build and Create DMG
-
-Once Xcode is installed, run:
+## Build and install
 
 ```bash
-./build_and_create_dmg.sh
+./build_and_create_dmg.sh      # builds build_output/Notemaker.app and Notemaker.dmg
 ```
 
-This will:
-- Build the app
-- Create a DMG installer file (`Notemaker.dmg`)
+Then open `Notemaker.dmg` and drag **Notemaker.app** onto **Applications**.
+Or skip the DMG: `./build.sh && cp -R build_output/Notemaker.app /Applications/`.
 
-### Step 3: Install the App
+The app is ad-hoc signed, not notarized. If macOS refuses to open it the first time, right-click the
+app → **Open** → **Open** (or allow it under System Settings → Privacy & Security).
 
-1. Double-click `Notemaker.dmg` to open it
-2. Drag `Notemaker.app` to the Applications folder
-3. Open Applications folder
-4. Double-click `Notemaker.app` to launch
+## Your data
 
-## Alternative: Build in Xcode
-
-If you prefer to build manually:
-
-1. Open the project:
-   ```bash
-   open Notemaker.xcodeproj
-   ```
-
-2. In Xcode:
-   - Select **"My Mac"** as the build target
-   - Press **⌘R** (Command + R) to build and run
-
-3. To create an installable app:
-   - Go to **Product → Archive**
-   - Click **"Distribute App"**
-   - Choose **"Copy App"**
-   - Drag the `.app` to Applications
+- Stored in `~/Library/Application Support/Notemaker/data.json` (Notemaker data format v2, see `docs/DATA_FORMAT.md`).
+- On first launch, data from Notemaker v1 for macOS (UserDefaults domain `com.notemaker.app`) is migrated
+  automatically. The v1 data is left in place as a backup.
+- **File → Export Backup** writes a v2 JSON file that the web app can import, and **File → Import Backup**
+  accepts v2 backups and web v1 backups (merge or replace; undoable).
+- Reminders and the focus timer use macOS notifications: allow them when asked, or in Settings → General.
 
 ## Troubleshooting
 
-### "Xcode is required" Error
-
-- Make sure Xcode is fully installed from the App Store
-- Open Xcode once and accept the license
-- Run: `sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer`
-
-### Build Errors
-
-If you see build errors:
-1. Close Xcode
-2. Delete `Notemaker.xcodeproj` folder
-3. Create a new Xcode project (macOS → App)
-4. Copy all Swift files from `Notemaker/` folder into the new project
-5. Build again
-
-## System Requirements
-
-- macOS 13.0 (Ventura) or later
-- Xcode 14.0 or later
-- At least 2GB free disk space
-
+- *"redefinition of module 'SwiftBridging'"* — a known Command Line Tools issue. `build.sh` detects it and
+  retries with a VFS overlay automatically; nothing to do.
+- First build takes a few minutes (system modules are compiled into `build/module-cache`); later builds are fast.
+- To start over: quit the app and move `~/Library/Application Support/Notemaker/data.json` away.

@@ -1,0 +1,18 @@
+{
+  "version": "1.0",
+  "exportDate": "2026-02-25T09:12:44.120Z",
+  "tasks": [
+    { "id": "1771900000000", "title": "Finish quarterly report", "date": "2026-02-24", "completed": true, "createdAt": "2026-02-24T08:01:10.000Z",
+      "subtasks": [
+        { "id": "1771900100000.4411", "title": "Collect numbers", "completed": true },
+        { "id": "1771900200000.9102", "title": "Write summary", "completed": false }
+      ] },
+    { "id": "1771900300000", "title": "Call plumber", "date": "2026-02-24", "completed": false, "createdAt": "2026-02-24T09:30:00.000Z", "subtasks": [] },
+    { "id": "1771990000000", "title": "Gym", "date": "2026-02-25", "completed": false, "createdAt": "2026-02-25T06:00:00.000Z" },
+    { "id": "1771990500000", "title": "Buy <groceries> & milk", "date": "2026-02-25", "completed": true, "createdAt": "2026-02-25T07:15:00.000Z", "subtasks": [] }
+  ],
+  "notes": [
+    { "date": "2026-02-24", "content": "# Tuesday\n\n- shipped **v1**\n- see [[2026-02-25]]", "createdAt": "2026-02-24T20:00:00.000Z" },
+    { "date": "2026-02-25", "content": "Quick note", "createdAt": "2026-02-25T08:00:00.000Z" }
+  ]
+}

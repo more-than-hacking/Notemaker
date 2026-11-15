@@ -1,0 +1,17 @@
+{
+  "passcode": "correct horse battery staple",
+  "plaintext": "# Private\nBank PIN reminder: ask Mom 🙂",
+  "cipher": {
+    "alg": "AES-GCM-256",
+    "kdf": "PBKDF2-SHA256",
+    "iterations": 210000,
+    "salt": "AQIDBAUGBwgJCgsMDQ4PEA==",
+    "iv": "oKGio6Slpqeoqaqr",
+    "ct": "PmHdXsOsfewh+Tn1ksp+j+vsoxuddMTzkKvh9HNkcXRmBtzKHt/I/dBgE+ZzhoTsKDfu0mNiRKAm"
+  },
+  "lockHash": {
+    "salt": "AQIDBAUGBwgJCgsMDQ4PEA==",
+    "iterations": 210000,
+    "hash": "U6OUXzMukovUtEmDo+FmDZ1fdh5NlMHp1TCfXaphP0I="
+  }
+}

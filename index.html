@@ -2,176 +2,257 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Notemaker - Daily Notes & Tasks</title>
+    <meta name="description" content="Notemaker — daily tasks, notes, habits and focus. Works offline.">
+    <meta name="theme-color" content="#5B21B6">
+    <meta name="color-scheme" content="light dark">
+    <link rel="icon" type="image/svg+xml" href="web-icons/favicon.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="web-icons/icon-32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="web-icons/icon-180.png">
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Notemaker">
     <link rel="stylesheet" href="styles.css">
+    <script>
+        /* apply the saved theme before first paint (avoids a light flash in dark mode) */
+        (function () {
+            try {
+                var d = JSON.parse(localStorage.getItem('notemaker_v2') || '{}');
+                var t = (d.settings && d.settings.theme) || (localStorage.getItem('notemaker_theme') === 'dark' ? 'dark' : 'system');
+                if (t !== 'system') document.documentElement.setAttribute('data-theme', t);
+                var a = localStorage.getItem('notemaker_accent');
+                if (a) document.documentElement.setAttribute('data-accent', a);
+            } catch (e) { /* storage blocked */ }
+        })();
+    </script>
 </head>
 <body>
-    <div class="app-container">
+    <a class="skip-link" href="#main">Skip to content</a>
+    <div class="app" id="app">
         <!-- Sidebar -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <h1>📝 Notemaker</h1>
-                <div class="theme-selector">
-                    <button class="theme-btn ocean active" data-theme="ocean" title="Ocean Blue"></button>
-                    <button class="theme-btn sunset" data-theme="sunset" title="Sunset"></button>
-                    <button class="theme-btn forest" data-theme="forest" title="Forest"></button>
-                    <button class="theme-btn purple" data-theme="purple" title="Purple"></button>
-                    <button class="theme-btn dark" data-theme="dark" title="Dark"></button>
+        <aside class="sidebar" id="sidebar" aria-label="Navigation">
+            <div class="brand">
+                <img src="web-icons/favicon.svg" alt="" width="36" height="36" class="brand-icon">
+                <div class="brand-text">
+                    <span class="brand-name">Notemaker</span>
+                    <span class="brand-sub">Tasks · Notes · Habits</span>
                 </div>
+                <button class="icon-btn sidebar-close" id="sidebarClose" type="button" aria-label="Close menu">×</button>
             </div>
-            
-            <div class="sidebar-section">
-                <h2>Date Selection</h2>
-                <input type="date" id="datePicker" class="date-picker">
-            </div>
-            
-            <div class="sidebar-section">
-                <h2>Quick Navigation</h2>
+
+            <nav class="view-nav" id="viewNav" aria-label="Views">
+                <button class="view-btn" data-view="day" type="button"><span class="vi" data-icon="day"></span><span>Day</span><kbd>1</kbd></button>
+                <button class="view-btn" data-view="calendar" type="button"><span class="vi" data-icon="calendar"></span><span>Calendar</span><kbd>2</kbd></button>
+                <button class="view-btn" data-view="planner" type="button"><span class="vi" data-icon="timeline"></span><span>Planner</span><kbd>3</kbd></button>
+                <button class="view-btn" data-view="board" type="button"><span class="vi" data-icon="board"></span><span>Board</span><kbd>4</kbd></button>
+                <button class="view-btn" data-view="habits" type="button"><span class="vi" data-icon="target"></span><span>Habits</span><kbd>5</kbd></button>
+                <button class="view-btn" data-view="insights" type="button"><span class="vi" data-icon="chart"></span><span>Insights</span><kbd>6</kbd></button>
+                <button class="view-btn" data-view="settings" type="button"><span class="vi" data-icon="settings"></span><span>Settings</span><kbd>7</kbd></button>
+            </nav>
+
+            <section class="side-card">
+                <h2>Date</h2>
+                <input type="date" id="datePicker" class="date-picker" aria-label="Pick a date">
                 <div class="nav-buttons">
-                    <button id="prevDay" class="nav-btn">← Previous</button>
-                    <button id="todayBtn" class="nav-btn">Today</button>
-                    <button id="nextDay" class="nav-btn">Next →</button>
+                    <button id="prevDay" class="nav-btn" type="button" title="Previous day (←)">← Prev</button>
+                    <button id="todayBtn" class="nav-btn" type="button" title="Today (t)">Today</button>
+                    <button id="nextDay" class="nav-btn" type="button" title="Next day (→)">Next →</button>
                 </div>
-            </div>
-            
-            <div class="sidebar-section">
-                <h2>Filter Tasks</h2>
-                <select id="taskFilter" class="filter-select">
-                    <option value="all">All Tasks</option>
-                    <option value="completed">Completed</option>
-                    <option value="incomplete">Incomplete</option>
-                </select>
-            </div>
-            
-            <div class="sidebar-section">
-                <button id="forwardTasks" class="forward-btn" style="display: none;">
-                    ⏭️ Forward Incomplete Tasks to Tomorrow
-                </button>
-            </div>
-            
-            <div class="sidebar-section">
-                <h2>Data Management</h2>
-                <div class="data-buttons">
-                    <button id="exportBtn" class="data-btn export-btn">
-                        📤 Export Data
-                    </button>
-                    <button id="importBtn" class="data-btn import-btn">
-                        📥 Import Data
-                    </button>
+            </section>
+
+            <section class="side-card stats" id="statsCard">
+                <h2 id="statsTitle">Today's Stats</h2>
+                <div class="stat-grid">
+                    <div class="stat"><span class="stat-num" id="totalTasks">0</span><span class="stat-label">Total</span></div>
+                    <div class="stat"><span class="stat-num" id="completedTasks">0</span><span class="stat-label">Done</span></div>
+                    <div class="stat"><span class="stat-num" id="remainingTasks">0</span><span class="stat-label">Left</span></div>
                 </div>
-                <input type="file" id="importFile" accept=".json" style="display: none;">
-            </div>
-            
-            <div class="sidebar-section stats">
-                <h2>Today's Stats</h2>
-                <div class="stat-item">
-                    <span>Total:</span>
-                    <span id="totalTasks">0</span>
-                </div>
-                <div class="stat-item">
-                    <span>Completed:</span>
-                    <span id="completedTasks">0</span>
-                </div>
-                <div class="stat-item">
-                    <span>Remaining:</span>
-                    <span id="remainingTasks">0</span>
-                </div>
-            </div>
+                <div class="progress" aria-hidden="true"><div class="progress-bar" id="dayProgress"></div></div>
+                <div class="stat-line" id="subtaskStats" hidden></div>
+                <div class="stat-line" id="streakLine"></div>
+            </section>
+
+            <section class="side-card side-actions">
+                <button class="side-action" id="searchBtn" type="button"><span class="vi" data-icon="search"></span>Search<kbd>/</kbd></button>
+                <button class="side-action" id="paletteBtn" type="button"><span class="vi" data-icon="cmd"></span>Commands<kbd>⌘K</kbd></button>
+                <button class="side-action" id="reviewBtn" type="button"><span class="vi" data-icon="sparkle"></span>Daily review</button>
+                <button class="side-action" id="focusBtn" type="button"><span class="vi" data-icon="tomato"></span>Focus timer</button>
+                <button class="side-action" id="exportBtn" type="button"><span class="vi" data-icon="download"></span>Export data</button>
+                <button class="side-action" id="importBtn" type="button"><span class="vi" data-icon="upload"></span>Import data</button>
+                <button class="side-action" id="helpBtn" type="button"><span class="vi" data-icon="keyboard"></span>Shortcuts<kbd>?</kbd></button>
+                <input type="file" id="importFile" accept=".json,application/json" hidden>
+            </section>
         </aside>
-        
-        <!-- Main Content -->
-        <main class="main-content">
-            <div class="tabs">
-                <button class="tab-btn active" data-tab="tasks">✅ Tasks</button>
-                <button class="tab-btn" data-tab="notes">📝 Notes</button>
-            </div>
-            
-            <!-- Tasks Tab -->
-            <div id="tasksTab" class="tab-content active">
-                <div class="tasks-toolbar">
-                    <button class="format-btn" id="undoTaskBtn" title="Undo">↶ Undo</button>
-                    <button class="format-btn" id="redoTaskBtn" title="Redo">↷ Redo</button>
+        <div class="sidebar-scrim" id="sidebarScrim"></div>
+
+        <!-- Main -->
+        <main class="main" id="main" tabindex="-1">
+            <header class="topbar">
+                <button class="icon-btn menu-btn" id="menuBtn" type="button" aria-label="Open menu"><span class="vi" data-icon="menu"></span></button>
+                <div class="topbar-title">
+                    <h1 id="viewTitle">Today</h1>
+                    <p id="viewSubtitle" class="muted"></p>
                 </div>
-                <div class="add-task-section">
-                    <input 
-                        type="text" 
-                        id="newTaskInput" 
-                        class="task-input" 
-                        placeholder="Add a new task..."
-                        onkeypress="if(event.key === 'Enter') addTask()"
-                    >
-                    <button id="addTaskBtn" class="add-btn" onclick="addTask()">Add Task</button>
+                <div class="topbar-actions">
+                    <button class="icon-btn" id="topPrev" type="button" title="Previous day (←)" aria-label="Previous day"><span class="vi" data-icon="left"></span></button>
+                    <button class="btn small" id="topToday" type="button" title="Today (t)">Today</button>
+                    <button class="icon-btn" id="topNext" type="button" title="Next day (→)" aria-label="Next day"><span class="vi" data-icon="right"></span></button>
+                    <span class="topbar-sep"></span>
+                    <button class="icon-btn" id="topSearch" type="button" title="Search (/ or ⌘F)" aria-label="Search"><span class="vi" data-icon="search"></span></button>
+                    <button class="icon-btn" id="themeToggle" type="button" title="Toggle theme" aria-label="Toggle theme"><span class="vi" data-icon="moon"></span></button>
                 </div>
-                
-                <div id="tasksList" class="tasks-list">
-                    <!-- Tasks will be dynamically added here -->
+            </header>
+
+            <!-- Day view -->
+            <section class="view" id="view-day" data-view="day" hidden>
+                <div class="subtabs" role="tablist">
+                    <button class="subtab" data-tab="tasks" role="tab" type="button">✅ Tasks <span class="count" id="tasksCount"></span></button>
+                    <button class="subtab" data-tab="notes" role="tab" type="button">📝 Notes <span class="count" id="noteFlag"></span></button>
                 </div>
-                
-                <div id="emptyState" class="empty-state" style="display: none;">
-                    <div class="empty-icon">📋</div>
-                    <p>No tasks for this date</p>
-                </div>
-            </div>
-            
-            <!-- Notes Tab -->
-            <div id="notesTab" class="tab-content">
-                <div class="notes-toolbar">
-                    <div class="toolbar-left">
-                        <button class="edit-toggle-btn" id="editToggleBtn" title="Click to Edit">
-                            ✏️ Edit
-                        </button>
-                        <button class="save-btn" id="saveBtn" style="display: none;" title="Save and Lock">
-                            💾 Save & Lock
-                        </button>
-                        <div class="toolbar-separator"></div>
-                        <button class="format-btn" id="undoBtn" title="Undo">↶ Undo</button>
-                        <button class="format-btn" id="redoBtn" title="Redo">↷ Redo</button>
-                        <div class="toolbar-separator"></div>
-                        <button class="format-btn" id="boldBtn" title="Bold">**B**</button>
-                        <button class="format-btn" id="italicBtn" title="Italic">*I*</button>
-                        <button class="format-btn" id="codeBtn" title="Code">`code`</button>
-                        <button class="format-btn" id="linkBtn" title="Link">[Link](url)</button>
-                        <button class="format-btn" id="imageBtn" title="Image">![Alt](url)</button>
-                        <div class="toolbar-separator"></div>
-                        <button class="format-btn" id="h1Btn" title="Heading 1"># H1</button>
-                        <button class="format-btn" id="h2Btn" title="Heading 2">## H2</button>
-                        <button class="format-btn" id="h3Btn" title="Heading 3">### H3</button>
-                        <div class="toolbar-separator"></div>
-                        <button class="format-btn" id="ulBtn" title="Unordered List">- List</button>
-                        <button class="format-btn" id="olBtn" title="Ordered List">1. List</button>
-                        <button class="format-btn" id="indentBtn" title="Indent">→ Indent</button>
-                        <button class="format-btn" id="outdentBtn" title="Outdent">← Outdent</button>
-                        <div class="toolbar-separator"></div>
-                        <button class="format-btn" id="blockquoteBtn" title="Blockquote">> Quote</button>
-                        <button class="format-btn" id="hrBtn" title="Horizontal Rule">---</button>
-                        <button class="format-btn" id="tableBtn" title="Table">Table</button>
+
+                <!-- Tasks -->
+                <div class="day-pane" id="tasksPane" data-pane="tasks">
+                    <div class="quickadd card">
+                        <div class="quickadd-row">
+                            <span class="vi qa-icon" data-icon="plus"></span>
+                            <input type="text" id="newTaskInput" class="task-input" autocomplete="off" spellcheck="true"
+                                placeholder="Add a task… try “Call Raj tomorrow 3pm #work !high”" aria-label="New task (quick add)">
+                            <button id="addTaskBtn" class="btn primary" type="button">Add</button>
+                        </div>
+                        <div class="qa-preview" id="quickPreview" aria-live="polite"></div>
                     </div>
-                    <div class="toolbar-right">
-                        <label class="sync-scroll-label">
-                            <input type="checkbox" id="syncScroll" checked>
-                            <span>Sync scroll</span>
-                        </label>
+                    <div class="task-toolbar">
+                        <div class="tb-group">
+                            <button class="btn ghost small" id="undoTaskBtn" type="button" title="Undo (⌘Z)">↶ Undo</button>
+                            <button class="btn ghost small" id="redoTaskBtn" type="button" title="Redo (⌘⇧Z)">↷ Redo</button>
+                        </div>
+                        <div class="tb-group filters">
+                            <select id="taskFilter" class="select small" aria-label="Status filter">
+                                <option value="all">All tasks</option>
+                                <option value="completed">Completed</option>
+                                <option value="incomplete">Incomplete</option>
+                            </select>
+                            <select id="priorityFilter" class="select small" aria-label="Priority filter">
+                                <option value="any">Any priority</option>
+                                <option value="high">High</option>
+                                <option value="medium">Medium</option>
+                                <option value="low">Low</option>
+                                <option value="none">No priority</option>
+                            </select>
+                            <select id="tagFilter" class="select small" aria-label="Tag filter"></select>
+                            <select id="sortMode" class="select small" aria-label="Sort">
+                                <option value="manual">Sort: manual</option>
+                                <option value="priority">Sort: priority</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button id="forwardTasks" class="forward-btn" type="button" hidden>⏭️ Forward incomplete tasks to tomorrow</button>
+                    <div id="tasksList" class="tasks-list" role="list"></div>
+                    <div id="emptyState" class="empty-state" hidden>
+                        <div class="empty-icon">📋</div>
+                        <p>No tasks for this date</p>
+                        <small class="muted">Press <kbd>n</kbd> to add one.</small>
                     </div>
                 </div>
-                <div class="notes-editor-container">
-                    <div class="notes-editor-wrapper" id="editorWrapper" style="display: none;">
-                        <textarea 
-                            id="notesEditorMd" 
-                            class="notes-editor-md" 
-                            placeholder="Write your notes in Markdown...&#10;&#10;Examples:&#10;# Heading 1&#10;## Heading 2&#10;**Bold** *Italic* ~~Strikethrough~~&#10;- List item&#10;  - Sub-list item&#10;    - Sub-sub-list item&#10;1. Numbered list&#10;  1. Sub-numbered list&#10;&gt; Blockquote&#10;`code` or ```code block```&#10;[Link](https://example.com)&#10;![Image](url)"
-                        ></textarea>
-                        <div id="notesPreview" class="notes-preview"></div>
+
+                <!-- Notes -->
+                <div class="day-pane" id="notesPane" data-pane="notes">
+                    <div class="notes-toolbar">
+                        <div class="toolbar-left">
+                            <button class="btn primary small" id="editToggleBtn" type="button" title="Edit note">✏️ Edit</button>
+                            <button class="btn primary small" id="saveBtn" type="button" title="Save and return to reading mode" hidden>💾 Save &amp; Lock</button>
+                            <div class="toolbar-separator"></div>
+                            <div class="fmt-group" id="fmtGroup">
+                                <button class="format-btn" id="undoBtn" type="button" title="Undo">↶</button>
+                                <button class="format-btn" id="redoBtn" type="button" title="Redo">↷</button>
+                                <div class="toolbar-separator"></div>
+                                <button class="format-btn" id="boldBtn" type="button" title="Bold"><b>B</b></button>
+                                <button class="format-btn" id="italicBtn" type="button" title="Italic"><i>I</i></button>
+                                <button class="format-btn" id="codeBtn" type="button" title="Code">&lt;/&gt;</button>
+                                <button class="format-btn" id="linkBtn" type="button" title="Link">🔗</button>
+                                <button class="format-btn" id="imageBtn" type="button" title="Image">🖼</button>
+                                <button class="format-btn" id="wikiBtn" type="button" title="Link to a day [[YYYY-MM-DD]]">[[ ]]</button>
+                                <div class="toolbar-separator"></div>
+                                <button class="format-btn" id="h1Btn" type="button" title="Heading 1">H1</button>
+                                <button class="format-btn" id="h2Btn" type="button" title="Heading 2">H2</button>
+                                <button class="format-btn" id="h3Btn" type="button" title="Heading 3">H3</button>
+                                <div class="toolbar-separator"></div>
+                                <button class="format-btn" id="ulBtn" type="button" title="Bulleted list">•</button>
+                                <button class="format-btn" id="olBtn" type="button" title="Numbered list">1.</button>
+                                <button class="format-btn" id="indentBtn" type="button" title="Indent">→</button>
+                                <button class="format-btn" id="outdentBtn" type="button" title="Outdent">←</button>
+                                <div class="toolbar-separator"></div>
+                                <button class="format-btn" id="blockquoteBtn" type="button" title="Quote">❝</button>
+                                <button class="format-btn" id="hrBtn" type="button" title="Horizontal rule">―</button>
+                                <button class="format-btn" id="tableBtn" type="button" title="Table">▦</button>
+                            </div>
+                        </div>
+                        <div class="toolbar-right">
+                            <select id="templateSelect" class="select small" aria-label="Apply template"></select>
+                            <button class="btn ghost small" id="privateBtn" type="button" title="Encrypt this note with your passcode">🔒 Make private</button>
+                            <button class="btn ghost small" id="mdExportBtn" type="button" title="Export day or week as Markdown">⬇ .md</button>
+                            <label class="sync-scroll-label" title="Sync scroll between editor and preview">
+                                <input type="checkbox" id="syncScroll" checked>
+                                <span>Sync scroll</span>
+                            </label>
+                        </div>
                     </div>
-                    <div id="notesPreviewOnly" class="notes-preview-only">
-                        <div id="notesPreviewContent" class="notes-preview-content"></div>
+                    <div class="notes-editor-container">
+                        <div class="notes-editor-wrapper" id="editorWrapper" hidden>
+                            <textarea id="notesEditorMd" class="notes-editor-md" spellcheck="true" aria-label="Note (Markdown)"
+                                placeholder="Write your notes in Markdown…&#10;&#10;# Heading&#10;**Bold** *Italic* ~~Strike~~&#10;- List item&#10;- [ ] Checklist&#10;&gt; Quote&#10;`code`&#10;[Link](https://example.com)&#10;[[2026-11-14]] links to another day"></textarea>
+                            <div id="notesPreview" class="notes-preview md"></div>
+                        </div>
+                        <div id="notesPreviewOnly" class="notes-preview-only">
+                            <div id="notesPreviewContent" class="notes-preview-content md"></div>
+                        </div>
+                        <div id="lockedPanel" class="locked-panel" hidden>
+                            <div class="locked-icon">🔒</div>
+                            <h3>This note is private</h3>
+                            <p class="muted">Enter your notes passcode to read it. It stays decrypted only in this tab.</p>
+                            <form id="unlockForm" class="unlock-form">
+                                <input type="password" id="unlockInput" class="input" placeholder="Passcode" autocomplete="off" aria-label="Passcode">
+                                <button class="btn primary" type="submit">Unlock</button>
+                            </form>
+                            <p class="error-text" id="unlockError" role="alert"></p>
+                        </div>
+                    </div>
+                    <div class="backlinks card" id="backlinksPanel">
+                        <h3><span class="vi" data-icon="link"></span> Backlinks</h3>
+                        <div id="backlinksList" class="backlinks-list"></div>
                     </div>
                 </div>
-            </div>
+            </section>
+
+            <section class="view" id="view-calendar" data-view="calendar" hidden></section>
+            <section class="view" id="view-planner" data-view="planner" hidden></section>
+            <section class="view" id="view-board" data-view="board" hidden></section>
+            <section class="view" id="view-habits" data-view="habits" hidden></section>
+            <section class="view" id="view-insights" data-view="insights" hidden></section>
+            <section class="view" id="view-settings" data-view="settings" hidden></section>
         </main>
     </div>
-    
+
+    <aside class="drawer" id="drawer" aria-label="Task details" hidden></aside>
+    <div class="focus-mini" id="focusMini" hidden></div>
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+
+    <script src="js/core.js"></script>
+    <script src="js/store.js"></script>
+    <script src="js/ui-common.js"></script>
+    <script src="js/ui-day.js"></script>
+    <script src="js/ui-notes.js"></script>
+    <script src="js/ui-detail.js"></script>
+    <script src="js/ui-calendar.js"></script>
+    <script src="js/ui-planner.js"></script>
+    <script src="js/ui-board.js"></script>
+    <script src="js/ui-habits.js"></script>
+    <script src="js/ui-insights.js"></script>
+    <script src="js/ui-settings.js"></script>
+    <script src="js/ui-overlays.js"></script>
+    <script src="js/focus.js"></script>
+    <script src="js/reminders.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
-

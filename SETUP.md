@@ -1,63 +1,43 @@
-# Quick Setup Guide
+# Notemaker for macOS — developer setup
 
-## Option 1: Open in Xcode (Recommended)
+## Layout
 
-1. **Open the project:**
-   ```bash
-   open Notemaker.xcodeproj
-   ```
-   
-   Or double-click `Notemaker.xcodeproj` in Finder.
+```
+Notemaker/
+  Core/        pure logic, Foundation + CryptoKit/CommonCrypto only (no SwiftUI/AppKit) — unit tested
+    Models.swift          v2 data model with explicit Codable (exact JSON field names, unknown keys preserved)
+    DayMath.swift         "YYYY-MM-DD" / ISO / "HH:MM" helpers
+    Logic.swift           occurrence rule, rollover/snooze, streaks, stats, search, wiki links, templates, Markdown export
+    QuickAdd.swift        quick-add grammar parser
+    NoteCrypto.swift      PBKDF2-SHA256 + AES-GCM-256 (WebCrypto compatible), lockHash
+    Migration.swift       macOS/web v1 → v2, import parsing/merge, data.json load/save
+    MarkdownBlocks.swift  block-level Markdown parser for the preview
+  App/         AppStore (state, undo, persistence), Reminders (UserNotifications), FocusTimer, Theme
+  Views/       SwiftUI views (Day, Calendar, Planner, Board, Habits, Insights, Search, palette, sheets, Settings)
+  NotemakerApp.swift      @main, menus/shortcuts, Settings scene, menu bar timer
+Tests-mac/     main.swift + run.sh — CLI test runner for Core (no XCTest needed)
+tools/         swiftc-env.sh — shared swiftc setup (SDK, module cache, SwiftBridging workaround)
+```
 
-2. **Select your Mac as the build target:**
-   - In Xcode, click on "Notemaker" in the top toolbar
-   - Select "My Mac" as the destination
+## Build
 
-3. **Build and Run:**
-   - Press `⌘R` (Command + R) or click the Play button
-   - The app will build and launch automatically
+```bash
+./build.sh            # release → build_output/Notemaker.app (ad-hoc signed)
+./build.sh --debug    # faster, unoptimised
+```
 
-4. **Create an Installable App:**
-   - Go to **Product → Archive**
-   - Once archived, click **"Distribute App"**
-   - Choose **"Copy App"** to create an installable .app bundle
-   - Drag the app to your Applications folder
+`build.sh` uses `xcodebuild` when full Xcode is installed, otherwise `swiftc` from the Command Line Tools.
+`Notemaker.xcodeproj` uses a file-system-synchronized group (Xcode 16+), so new files under `Notemaker/`
+are picked up automatically.
 
-## Option 2: Build from Command Line
+## Tests
 
-1. **Run the build script:**
-   ```bash
-   ./build.sh
-   ```
+```bash
+Tests-mac/run.sh                          # all Core tests
+Tests-mac/run.sh --import path/to.json    # print entity counts of any v2 (or web v1) backup
+Tests-mac/run.sh --migrate-v1-defaults    # dry run of the macOS v1 migration (read-only, counts only)
+```
 
-2. **Install the app:**
-   ```bash
-   cp -R ./build/Build/Products/Release/Notemaker.app /Applications/
-   ```
-
-## Troubleshooting
-
-### If Xcode shows project errors:
-
-1. Close Xcode
-2. Delete the `Notemaker.xcodeproj` folder
-3. Open Xcode
-4. Go to **File → New → Project**
-5. Select **macOS → App**
-6. Name it "Notemaker"
-7. Choose a location (you can use the same folder)
-8. Copy all the Swift files from the `Notemaker/` folder into the new project
-9. Build and run
-
-### Requirements
-
-- macOS 13.0 or later
-- Xcode 14.0 or later (available from the App Store)
-
-## First Launch
-
-When you first launch the app:
-- It will open with today's date selected
-- You can immediately start adding tasks and notes
-- All data is automatically saved and persists between sessions
-
+The tests cover the quick-add vectors from `docs/DATA_FORMAT.md`, the occurrence rule, rollover, streaks,
+v1 migration, decryption of `docs/crypto-test-vector.json`, v2 round trips, and (when present) the web
+app's `tests-web/fixtures/*.json`.

@@ -1,0 +1,385 @@
+{
+  "app": "notemaker",
+  "version": 2,
+  "exportedAt": "2026-11-15T18:10:00.000Z",
+  "tasks": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "title": "Call Raj",
+      "date": "2026-11-16",
+      "done": false,
+      "completedAt": null,
+      "createdAt": "2026-11-14T08:00:00.000Z",
+      "priority": "high",
+      "tags": [
+        "work"
+      ],
+      "subtasks": [],
+      "status": "todo",
+      "order": 0,
+      "recurrence": null,
+      "doneDates": {},
+      "skipDates": {},
+      "reminder": "15:00",
+      "timeBlock": null,
+      "pomodoros": {
+        "estimate": 0,
+        "done": 0
+      },
+      "rolledFrom": null,
+      "notes": ""
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "title": "Standup",
+      "date": "2026-11-15",
+      "done": false,
+      "completedAt": null,
+      "createdAt": "2026-11-14T08:00:00.000Z",
+      "priority": "none",
+      "tags": [
+        "work"
+      ],
+      "subtasks": [],
+      "status": "todo",
+      "order": 1,
+      "recurrence": {
+        "freq": "weekdays",
+        "interval": 1,
+        "byWeekday": [],
+        "until": null
+      },
+      "doneDates": {
+        "2026-11-12": true,
+        "2026-11-13": true
+      },
+      "skipDates": {
+        "2026-11-11": true
+      },
+      "reminder": "09:30",
+      "timeBlock": null,
+      "pomodoros": {
+        "estimate": 0,
+        "done": 0
+      },
+      "rolledFrom": null,
+      "notes": ""
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "title": "Pay rent",
+      "date": "2026-11-15",
+      "done": false,
+      "completedAt": null,
+      "createdAt": "2026-11-14T08:00:00.000Z",
+      "priority": "medium",
+      "tags": [
+        "home"
+      ],
+      "subtasks": [],
+      "status": "todo",
+      "order": 2,
+      "recurrence": {
+        "freq": "monthly",
+        "interval": 1,
+        "byWeekday": [],
+        "until": null
+      },
+      "doneDates": {},
+      "skipDates": {},
+      "reminder": null,
+      "timeBlock": null,
+      "pomodoros": {
+        "estimate": 0,
+        "done": 0
+      },
+      "rolledFrom": null,
+      "notes": ""
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "title": "Gym",
+      "date": "2026-11-16",
+      "done": false,
+      "completedAt": null,
+      "createdAt": "2026-11-14T08:00:00.000Z",
+      "priority": "none",
+      "tags": [
+        "health"
+      ],
+      "subtasks": [],
+      "status": "todo",
+      "order": 3,
+      "recurrence": {
+        "freq": "weekly",
+        "interval": 2,
+        "byWeekday": [
+          1,
+          4
+        ],
+        "until": "2027-06-30"
+      },
+      "doneDates": {},
+      "skipDates": {},
+      "reminder": null,
+      "timeBlock": null,
+      "pomodoros": {
+        "estimate": 0,
+        "done": 0
+      },
+      "rolledFrom": null,
+      "notes": ""
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000007",
+      "title": "Write report",
+      "date": "2026-11-15",
+      "done": false,
+      "completedAt": null,
+      "createdAt": "2026-11-14T08:00:00.000Z",
+      "priority": "high",
+      "tags": [
+        "work"
+      ],
+      "subtasks": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "title": "Collect numbers",
+          "done": true
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000006",
+          "title": "Draft summary",
+          "done": false
+        }
+      ],
+      "status": "doing",
+      "order": 4,
+      "recurrence": null,
+      "doneDates": {},
+      "skipDates": {},
+      "reminder": null,
+      "timeBlock": {
+        "start": "10:00",
+        "end": "11:30"
+      },
+      "pomodoros": {
+        "estimate": 4,
+        "done": 2
+      },
+      "rolledFrom": null,
+      "notes": "Use the Q3 numbers."
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000008",
+      "title": "Book dentist",
+      "date": "2026-11-15",
+      "done": false,
+      "completedAt": null,
+      "createdAt": "2026-11-11T09:00:00.000Z",
+      "priority": "low",
+      "tags": [
+        "health"
+      ],
+      "subtasks": [],
+      "status": "todo",
+      "order": 5,
+      "recurrence": null,
+      "doneDates": {},
+      "skipDates": {},
+      "reminder": null,
+      "timeBlock": null,
+      "pomodoros": {
+        "estimate": 0,
+        "done": 0
+      },
+      "rolledFrom": "2026-11-11",
+      "notes": ""
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000009",
+      "title": "Read",
+      "date": "2026-11-15",
+      "done": true,
+      "completedAt": "2026-11-15T07:45:00.000Z",
+      "createdAt": "2026-11-14T08:00:00.000Z",
+      "priority": "none",
+      "tags": [
+        "book",
+        "fun"
+      ],
+      "subtasks": [],
+      "status": "done",
+      "order": 6,
+      "recurrence": null,
+      "doneDates": {},
+      "skipDates": {},
+      "reminder": null,
+      "timeBlock": null,
+      "pomodoros": {
+        "estimate": 0,
+        "done": 0
+      },
+      "rolledFrom": null,
+      "notes": ""
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000010",
+      "title": "Stretch",
+      "date": "2026-11-01",
+      "done": false,
+      "completedAt": null,
+      "createdAt": "2026-11-14T08:00:00.000Z",
+      "priority": "none",
+      "tags": [],
+      "subtasks": [],
+      "status": "todo",
+      "order": 7,
+      "recurrence": {
+        "freq": "daily",
+        "interval": 3,
+        "byWeekday": [],
+        "until": null
+      },
+      "doneDates": {},
+      "skipDates": {},
+      "reminder": "07:00",
+      "timeBlock": null,
+      "pomodoros": {
+        "estimate": 0,
+        "done": 0
+      },
+      "rolledFrom": null,
+      "notes": ""
+    }
+  ],
+  "notes": {
+    "2026-11-14": {
+      "markdown": "# Saturday\n\nPrepared the **quarterly report**. See [[2026-11-15]].\n\n- [x] outline\n- [ ] charts",
+      "updatedAt": "2026-11-14T21:00:00.000Z",
+      "locked": false,
+      "cipher": null
+    },
+    "2026-11-15": {
+      "markdown": "# Sunday, November 15, 2026\n\n## Today's focus\n- Finish the report\n\n## Daily review\n\n**Wins**\n- shipped v2\n\n**Blockers**\n- —\n\n**Tomorrow's focus**\n- call Raj\n",
+      "updatedAt": "2026-11-15T18:05:00.000Z",
+      "locked": false,
+      "cipher": null
+    },
+    "2026-11-13": {
+      "markdown": "",
+      "updatedAt": "2026-11-13T22:00:00.000Z",
+      "locked": true,
+      "cipher": {
+        "alg": "AES-GCM-256",
+        "kdf": "PBKDF2-SHA256",
+        "iterations": 210000,
+        "salt": "NBgnO/iUMDpvitvHj8nvsQ==",
+        "iv": "SlH0jiRT12TxdJAZ",
+        "ct": "Rh04GZTcJN+bWvLAhyx3tHcFMCag/rMb8qpd7do5Y1tzjneAexX8y/AxsHBiFXW/bMz7e5otq956"
+      }
+    }
+  },
+  "habits": [
+    {
+      "id": "00000000-0000-4000-8000-000000000011",
+      "name": "Meditate",
+      "color": "#8B5CF6",
+      "days": [],
+      "createdAt": "2026-11-01T07:00:00.000Z",
+      "log": {
+        "2026-11-12": true,
+        "2026-11-13": true,
+        "2026-11-14": true,
+        "2026-11-15": true
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000012",
+      "name": "Run",
+      "color": "#10B981",
+      "days": [
+        1,
+        3,
+        5
+      ],
+      "createdAt": "2026-11-02T07:00:00.000Z",
+      "log": {
+        "2026-11-09": true,
+        "2026-11-11": true,
+        "2026-11-13": true
+      }
+    }
+  ],
+  "templates": [
+    {
+      "id": "builtin-daily-journal",
+      "name": "Daily journal",
+      "markdown": "# {{weekday}}, {{date}}\n\n## Grateful for\n- \n\n## Today's focus\n- \n\n## Notes\n\n## Reflection\n"
+    },
+    {
+      "id": "builtin-meeting-notes",
+      "name": "Meeting notes",
+      "markdown": "## Meeting — {{date}}\n\n**Attendees:** \n\n### Agenda\n1. \n\n### Discussion\n- \n\n### Decisions\n- \n\n### Action items\n- [ ] \n"
+    },
+    {
+      "id": "builtin-weekly-review",
+      "name": "Weekly review",
+      "markdown": "# Weekly review — week of {{date}}\n\n## Wins\n- \n\n## What didn't go well\n- \n\n## Lessons\n- \n\n## Next week's priorities\n1. \n2. \n3. \n"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000013",
+      "name": "1:1 with manager",
+      "markdown": "## 1:1 — {{weekday}}, {{date}}\n\n- Wins\n- Asks\n"
+    }
+  ],
+  "focusSessions": [
+    {
+      "id": "00000000-0000-4000-8000-000000000014",
+      "taskId": "00000000-0000-4000-8000-000000000007",
+      "start": "2026-11-15T09:00:00.000Z",
+      "end": "2026-11-15T09:25:00.000Z",
+      "minutes": 25,
+      "kind": "focus"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000015",
+      "taskId": "00000000-0000-4000-8000-000000000007",
+      "start": "2026-11-15T09:25:00.000Z",
+      "end": "2026-11-15T09:30:00.000Z",
+      "minutes": 5,
+      "kind": "break"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000016",
+      "taskId": "00000000-0000-4000-8000-000000000007",
+      "start": "2026-11-15T09:30:00.000Z",
+      "end": "2026-11-15T09:55:00.000Z",
+      "minutes": 25,
+      "kind": "focus"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000017",
+      "taskId": null,
+      "start": "2026-11-14T14:00:00.000Z",
+      "end": "2026-11-14T14:25:00.000Z",
+      "minutes": 25,
+      "kind": "focus"
+    }
+  ],
+  "settings": {
+    "theme": "dark",
+    "autoRollover": true,
+    "focusMinutes": 25,
+    "breakMinutes": 5,
+    "reviewTime": "18:30",
+    "weekStartsOn": 1,
+    "dayStart": "08:00",
+    "dayEnd": "20:00",
+    "lockHash": {
+      "salt": "oZoVUaqdZiM5lA46F82LLw==",
+      "iterations": 210000,
+      "hash": "jeLKSW66a40M3meK/uN10bLXBN59I/FePw/2tFfrYqs="
+    }
+  }
+}
