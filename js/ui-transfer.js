@@ -102,10 +102,13 @@
 
     // ======================= move to a new device (export) =======================
     NM.transfer = NM.transfer || {};
-    NM.transfer.start = function () {
+    /** opts.backup: same encrypted file, worded as a backup you keep ("Save a backup"). */
+    NM.transfer.start = function (opts) {
+        opts = opts || {};
+        const B = !!opts.backup;
         while (NM.closeTopOverlay()) { /* clear the stage */ }
         if (NM.beforeDateChange) NM.beforeDateChange();
-        const st = { omitVault: false, code: null, fileText: null, fileName: T.fileName(C.localToday()) };
+        const st = { omitVault: false, code: null, fileText: null, fileName: B ? 'Notemaker backup ' + C.localToday() + '.notemaker' : T.fileName(C.localToday()) };
         const sh = sheet({ label: 'Move to a new device', onClose: () => { st.code = null; st.fileText = null; } });
 
         function summaryScreen() {
@@ -118,8 +121,9 @@
                 : plural(v.items.length, 'item') + ' · files are counted after you unlock it';
             sh.show(screen(
                 tile('upload'),
-                title('Move to a new device'),
-                lead('Everything on this ' + (isNative() ? 'Mac' : 'browser') + ' goes into one encrypted file. You’ll open it on your new device with a one-time code.'),
+                title(B ? 'Save a backup' : 'Move to a new device'),
+                lead(B ? 'Everything goes into one encrypted file you keep somewhere safe. To restore it — here or on a new device — you’ll need the code shown next.'
+                    : 'Everything on this ' + (isNative() ? 'Mac' : 'browser') + ' goes into one encrypted file. You’ll open it on your new device with a one-time code.'),
                 rows([
                     { label: 'Tasks', value: String(d.tasks.length) },
                     { label: 'Notes', value: notes.length + (locked ? ' (' + locked + ' private)' : '') },
@@ -129,7 +133,7 @@
                     v ? { label: 'Vault', value: vaultValue } : null,
                     { label: 'Settings & preferences', value: 'Included' }
                 ]),
-                primary(needsVaultStep() ? 'Continue' : 'Create transfer file', () => (needsVaultStep() ? vaultScreen() : build())),
+                primary(needsVaultStep() ? 'Continue' : B ? 'Create backup file' : 'Create transfer file', () => (needsVaultStep() ? vaultScreen() : build())),
                 link('Cancel', () => sh.close(), 'muted')));
         }
         const hardwareOnly = () => !!S.doc.vault && !S.doc.vault.keyslots.some((s) => s.type === 'recovery');
@@ -218,7 +222,7 @@
 
         async function build() {
             sh.setGuard(null);
-            sh.show(screen(tile('upload'), title('Creating your transfer file…'), lead('This takes a moment for large vaults.'), h('div', { class: 'tf-spinner', 'aria-hidden': 'true' })));
+            sh.show(screen(tile('upload'), title(B ? 'Creating your backup…' : 'Creating your transfer file…'), lead('This takes a moment for large vaults.'), h('div', { class: 'tf-spinner', 'aria-hidden': 'true' })));
             try {
                 let blobs = {};
                 const v = S.doc.vault;
@@ -245,6 +249,7 @@
                 built.code.bytes.fill(0);
                 st.summary = built.file.summary;
                 const saved = await saveFile(st.fileName, st.fileText, T.MIME);
+                if (saved && NM.storage) NM.storage.noteBackup();
                 if (!saved) { st.code = null; st.fileText = null; summaryScreen(); NM.toast('Not saved — nothing was created.'); return; }
                 codeScreen();
             } catch (err) {
@@ -253,21 +258,25 @@
         }
         function codeScreen() {
             let done = false;
-            const finish = primary('Done', () => { done = true; st.code = null; st.fileText = null; sh.close(); NM.toast('Transfer file ready. Open it on your new device.', 'ok', 5000); }, { disabled: true });
+            const finish = primary('Done', () => { done = true; st.code = null; st.fileText = null; sh.close(); NM.toast(B ? 'Backup saved. Keep the file and the code in different places.' : 'Transfer file ready. Open it on your new device.', 'ok', 5000); }, { disabled: true });
             sh.setGuard(async () => done || NM.confirm('Close without keeping the code? It can’t be shown again — you’d need to create a new transfer file.', 'Close', true));
             const groups = st.code.split('-');
             sh.show(screen(
                 tile('key'),
-                title('Your transfer code'),
-                lead('You’ll type this on your new device. It’s shown only once.'),
+                title(B ? 'Your backup code' : 'Your transfer code'),
+                lead(B ? 'You’ll need it to restore this backup. It’s shown only once.' : 'You’ll type this on your new device. It’s shown only once.'),
                 h('div', { class: 'rk-grid tf-code', 'aria-label': 'Transfer code' }, groups.map((g) => h('span', null, g))),
                 h('div', { class: 'btn-group' },
                     h('button', { class: 'btn', type: 'button', onclick: () => kit().copySecret(st.code) }, NM.icon('copy'), ' Copy'),
-                    h('button', { class: 'btn', type: 'button', onclick: () => kit().printSecret('Notemaker transfer code', 'Type this on your new device to open “' + st.fileName + '”. It only works with that file.', st.code) }, NM.icon('note'), ' Print')),
-                h('ol', { class: 'tf-steps' },
-                    h('li', null, 'Copy ', h('b', null, st.fileName), ' to your new device (AirDrop, USB or cloud).'),
-                    h('li', null, 'Open Notemaker there and choose ', h('b', null, 'Restore from another device'), '.'),
-                    h('li', null, 'Type this code.')),
+                    h('button', { class: 'btn', type: 'button', onclick: () => kit().printSecret(B ? 'Notemaker backup code' : 'Notemaker transfer code', 'Type this to open “' + st.fileName + '”. It only works with that file.', st.code) }, NM.icon('note'), ' Print')),
+                B ? h('ol', { class: 'tf-steps' },
+                    h('li', null, 'Keep ', h('b', null, st.fileName), ' somewhere other than this computer — an external drive or cloud storage.'),
+                    h('li', null, 'Keep this code separately, for example printed or in a password manager.'),
+                    h('li', null, 'To restore, choose ', h('b', null, 'Restore from another device'), ' and type the code.'))
+                    : h('ol', { class: 'tf-steps' },
+                        h('li', null, 'Copy ', h('b', null, st.fileName), ' to your new device (AirDrop, USB or cloud).'),
+                        h('li', null, 'Open Notemaker there and choose ', h('b', null, 'Restore from another device'), '.'),
+                        h('li', null, 'Type this code.')),
                 link('Save the file again', () => saveFile(st.fileName, st.fileText, T.MIME), 'muted'),
                 h('label', { class: 'check-line v-check' }, h('input', { type: 'checkbox', onchange: (e) => { finish.disabled = !e.target.checked; if (e.target.checked) finish.focus(); } }),
                     h('span', null, 'I’ve written down the code')),
@@ -504,14 +513,15 @@
 
     // ======================= first-run welcome =======================
     NM.transfer.welcome = function () {
-        const fresh = () => { try { NM.ls.set(WELCOMED, '1'); } catch (e) { /* */ } sh.close(); NM.focusQuickAdd(); };
+        const fresh = () => { try { NM.ls.set(WELCOMED, '1'); } catch (e) { /* */ } sh.close(); NM.focusQuickAdd(); if (NM.storage) NM.storage.afterStartFresh(); };
         const sh = sheet({ label: 'Welcome', closable: false, onEscape: fresh });
         sh.show(screen(
             h('img', { src: 'web-icons/favicon.svg', alt: '', width: 72, height: 72, class: 'welcome-icon' }),
             title('Welcome to Notemaker'),
             lead('Starting here for the first time, or moving from another device?'),
             primary('Start fresh', fresh),
-            h('button', { class: 'btn v-cta', type: 'button', onclick: () => { sh.close(); NM.transfer.restore({ fromWelcome: true }); } }, 'Restore from another device')));
+            h('button', { class: 'btn v-cta', type: 'button', onclick: () => { sh.close(); NM.transfer.restore({ fromWelcome: true }); } }, 'Restore from another device'),
+            NM.storage ? NM.storage.welcomeOption(() => { try { NM.ls.set(WELCOMED, '1'); } catch (e) { /* */ } sh.close(); }) : null));
     };
     NM.transfer.maybeWelcome = function () {
         if (T.shouldShowWelcome(S.doc, !!NM.ls.get(WELCOMED))) NM.transfer.welcome();

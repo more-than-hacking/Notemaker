@@ -49,6 +49,8 @@
         S.migratedFromV1 = r.source === 'local-v1';
         S.migratedToDesktop = !!NM.native && r.migrated;
         S.loadError = r.error || null;
+        // folder storage (browser): the folder is the source of truth; may wait for permission
+        if (NM.storage) await NM.storage.boot();
         // v1 keys are left untouched as a backup
         // accent colour carried over from the v1 colour themes
         const v1Theme = ls.get(V1_THEME);
@@ -67,6 +69,7 @@
     NM.save = function () {
         try {
             NM.persist.save(S.doc);
+            if (NM.storage) NM.storage.onSave(S.doc);
             saveFailedShown = false;
             if (NM.afterSave) NM.afterSave();
         } catch (e) {

@@ -33,6 +33,7 @@
             data.vault.blobs = r;
         }
         NM.download('notemaker_backup_' + S.today + '.json', JSON.stringify(data, null, 2));
+        if (NM.storage) NM.storage.noteBackup();
         NM.toast('Backup exported (' + data.tasks.length + ' tasks, ' + Object.keys(data.notes).length + ' notes)', 'ok');
     };
     NM.importFile = function (file) {
@@ -271,6 +272,7 @@
                         C.builtinTemplates().forEach((t) => { if (!have.has(t.name.toLowerCase())) S.doc.templates.push(t); });
                     }) }, 'Restore built-ins'))),
             sec('dataSection', 'Data',
+                NM.storage.settingsRows(row),
                 row('Move to a new device', 'One encrypted file with everything, including your vault, opened with a one-time code.',
                     h('button', { class: 'btn primary small', type: 'button', onclick: () => NM.transfer.start() }, NM.icon('upload'), ' Move…')),
                 row('Restore from another device', 'Open a .notemaker transfer file from your old device.',
@@ -279,7 +281,7 @@
                     h('button', { class: 'btn small', type: 'button', onclick: NM.exportJson }, NM.icon('download'), ' Export'),
                     h('button', { class: 'btn small', type: 'button', onclick: () => document.getElementById('importFile').click() }, NM.icon('upload'), ' Import'))),
                 row('Markdown', 'Tasks as checkboxes plus the note, for the selected day or week.', h('button', { class: 'btn small', type: 'button', onclick: () => NM.exportMarkdown() }, '⬇ Export .md')),
-                row('Stored in this browser', S.doc.tasks.length + ' tasks · ' + Object.keys(S.doc.notes).length + ' notes · ' + S.doc.habits.length + ' habits · ' + S.doc.focusSessions.length + ' focus sessions · ~' +
+                row(NM.storage && NM.storage.folderActive() ? 'Your data' : 'Stored in this browser', S.doc.tasks.length + ' tasks · ' + Object.keys(S.doc.notes).length + ' notes · ' + S.doc.habits.length + ' habits · ' + S.doc.focusSessions.length + ' focus sessions · ~' +
                     Math.round(JSON.stringify(S.doc).length / 1024) + ' KB' + (NM.native ? ' (data.json)' : '') + (NM.ls.get('notemaker_tasks') ? ' · v1 data kept as backup' : ''), null))));
     }
 

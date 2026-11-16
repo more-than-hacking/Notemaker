@@ -186,11 +186,15 @@
         document.addEventListener('keydown', onKey);
         bindNative();
         NM.render();
+        NM.started = true;
         document.body.classList.remove('booting');
         NM.focus.restore();
         NM.startScheduler();
         NM.syncNative(true);
         NM.transfer.maybeWelcome();
+        NM.storage.renderSidebarHint();
+        setTimeout(NM.storage.maybeRemind, 4000);
+        setInterval(NM.storage.maybeRemind, 3600000);
         if (S.migratedToDesktop) NM.toast('Your browser data was copied into the desktop app (data.json).', 'ok', 8000);
         else if (S.migratedFromV1) NM.toast('Upgraded to Notemaker v2 — your v1 tasks and notes were migrated (the v1 copy is kept as a backup).', 'ok', 8000);
         if (S.loadError) NM.toast(S.loadError, 'error', 10000);
