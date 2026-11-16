@@ -22,11 +22,12 @@ APP="$OUT_DIR/$APP_NAME.app"
 VERSION="2.1.0"
 BUILD_NUMBER="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)"
 
-OPT="-O"; FORCE_SWIFTC=0; ARCHS="arm64 x86_64"
+OPT="-O"; FORCE_SWIFTC=1; ARCHS="arm64 x86_64"
 for a in "$@"; do
   case "$a" in
     --debug) OPT="-Onone" ;;
     --swiftc) FORCE_SWIFTC=1 ;;
+    --xcode) FORCE_SWIFTC=0 ;;
     --native-only) ARCHS="$(uname -m)" ;;
   esac
 done

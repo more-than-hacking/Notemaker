@@ -120,7 +120,7 @@ jobs:
           java-version: 17
       - name: Android NDK + Rust targets
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;29.0.14206865" "platforms;android-37" > /dev/null
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;29.0.14206865" "platforms;android-36" > /dev/null
           echo "NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
           rustup toolchain install $RUST_VERSION --profile minimal && rustup default $RUST_VERSION
           rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android

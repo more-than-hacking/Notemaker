@@ -62,7 +62,16 @@
   });
 
   // Shell helpers (not part of the web contract).
-  document.documentElement.classList.add("notemaker-desktop", "notemaker-" + PLATFORM);
+  // WebView2 runs this before <html> exists, so add the classes once the document element is there.
+  var addClasses = function () {
+    var el = document.documentElement;
+    if (!el) return false;
+    el.classList.add("notemaker-desktop", "notemaker-" + PLATFORM);
+    return true;
+  };
+  if (!addClasses()) document.addEventListener("readystatechange", function once() {
+    if (addClasses()) document.removeEventListener("readystatechange", once);
+  });
 
   // Undo/Redo from a native menu: native text undo inside editable fields, otherwise a menu event.
   Object.defineProperty(window, "__notemakerMenuUndo", {
