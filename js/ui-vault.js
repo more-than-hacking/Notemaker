@@ -60,10 +60,19 @@
     /** Is there a hardware key that works on this device? In the shell, SE slots from another Mac only reveal
         themselves as "not-this-device" when tried, so remember that per vault. */
     let seNotHereFor = null;
+    /* Desktop shell: ids of Secure Enclave slots known to live on this Mac (created or used here). Not secret.
+       null = never tracked (older installs) → assume usable; a restore from another device sets it to a known list. */
+    const SE_LOCAL = 'notemaker_se_local';
+    function seLocal() { try { const v = JSON.parse(NM.ls.get(SE_LOCAL) || 'null'); return Array.isArray(v) ? v : null; } catch (e) { return null; } }
+    function rememberSe(id) { const l = seLocal() || []; if (!l.includes(id)) l.push(id); try { NM.ls.set(SE_LOCAL, JSON.stringify(l)); } catch (e) { /* */ } }
     function usableHere(v) {
         const here = slotsHere(v);
         if (!here.length) return false;
-        if (isNative() && seNotHereFor === here.map((s) => s.id).join(',')) return false;
+        if (isNative()) {
+            if (seNotHereFor === here.map((s) => s.id).join(',')) return false;
+            const known = seLocal();
+            if (known && !here.some((s) => known.includes(s.id))) return false;
+        }
         return true;
     }
     function webauthnError(e) {
@@ -112,11 +121,12 @@
     }
     async function hwCreate(raw) {
         const label = (support && support.device) || (isNative() ? 'This Mac' : browserLabel());
-        return isNative() ? NC.seVault.createSlot(NM.native, V, raw, label) : passkeyCreate(raw, label);
+        if (isNative()) { const slot = await NC.seVault.createSlot(NM.native, V, raw, label); rememberSe(slot.id); return slot; }
+        return passkeyCreate(raw, label);
     }
     /** → { raw (verified VDK bytes; caller zeroes), slot } */
     async function hwUnlock(v) {
-        if (isNative()) return NC.seVault.unlock(NM.native, V, v);
+        if (isNative()) { const r = await NC.seVault.unlock(NM.native, V, v); rememberSe(r.slot.id); return r; }
         const slots = slotsHere(v);
         if (!slots.length) throw err('This browser has no passkey for this vault. Use the recovery key, then “Add this browser”.', 'no-slot');
         const res = await passkeyPrf(slots.map((s) => ({ id: V.unb64(s.credentialId), salt: V.unb64(s.prfSalt) })));
@@ -411,20 +421,23 @@
     function recoveryGrid(text) {
         return h('div', { class: 'rk-grid', 'aria-label': 'Recovery key' }, text.split('-').map((g) => h('span', null, g)));
     }
+    /** Print a secret through a throw-away iframe (text only, nothing persisted). */
+    function printSecret(title, note, text) {
+        const f = h('iframe', { style: { position: 'fixed', width: '0', height: '0', border: '0', right: '0', bottom: '0' }, 'aria-hidden': 'true' });
+        document.body.appendChild(f);
+        const d = f.contentDocument;
+        d.open(); d.write('<!doctype html><title></title>'); d.close();
+        d.title = title;
+        d.body.style.font = '16px -apple-system, sans-serif';
+        const add = (tag, t, css) => { const e = d.createElement(tag); e.textContent = t; if (css) e.style.cssText = css; d.body.appendChild(e); };
+        add('h1', title);
+        add('p', 'Created ' + new Date().toLocaleString() + '. ' + note);
+        add('pre', text, 'font: 22px ui-monospace, Menlo, monospace;');
+        f.contentWindow.focus(); f.contentWindow.print();
+        setTimeout(() => f.remove(), 1500);
+    }
     function recoveryActions(text) {
-        const print = () => {
-            const f = h('iframe', { style: { position: 'fixed', width: '0', height: '0', border: '0', right: '0', bottom: '0' }, 'aria-hidden': 'true' });
-            document.body.appendChild(f);
-            const d = f.contentDocument;
-            d.open(); d.write('<!doctype html><title>Notemaker vault recovery key</title>'); d.close();
-            d.body.style.font = '16px -apple-system, sans-serif';
-            const add = (tag, t, css) => { const e = d.createElement(tag); e.textContent = t; if (css) e.style.cssText = css; d.body.appendChild(e); };
-            add('h1', 'Notemaker vault — recovery key');
-            add('p', 'Created ' + new Date().toLocaleString() + '. Anyone with this key can open your vault. Keep it somewhere safe and offline.');
-            add('pre', text, 'font: 22px ui-monospace, Menlo, monospace;');
-            f.contentWindow.focus(); f.contentWindow.print();
-            setTimeout(() => f.remove(), 1500);
-        };
+        const print = () => printSecret('Notemaker vault — recovery key', 'Anyone with this key can open your vault. Keep it somewhere safe and offline.', text);
         return h('div', { class: 'btn-group', role: 'group', 'aria-label': 'Save the recovery key' },
             h('button', { class: 'btn', type: 'button', onclick: () => copySecret(text) }, NM.icon('copy'), ' Copy'),
             h('button', { class: 'btn', type: 'button', onclick: () => NM.download('Notemaker vault recovery key.txt', 'Notemaker vault recovery key\n\n' + text + '\n\nCreated ' + new Date().toISOString() + '\nAnyone with this key can open your vault. Keep it somewhere safe and offline.\n', 'text/plain') }, NM.icon('download'), ' Save as file'),
@@ -918,11 +931,11 @@
         if (session && !vault()) { session = null; }
         if (!vault()) renderSetup(root); else renderLocked(root);
     }
-    let supportStarted = false;
+    let supportPromise = null;
     function ensureSupport() {
-        if (supportStarted) return;
-        supportStarted = true;
-        checkSupport().then((s) => { support = s; if (S.view === 'vault') render(); }).catch(() => { support = { ok: false, reason: 'no-webauthn' }; if (S.view === 'vault') render(); });
+        if (supportPromise) return supportPromise;
+        supportPromise = checkSupport().catch(() => ({ ok: false, reason: 'no-webauthn' })).then((s) => { support = s; if (S.view === 'vault') render(); return s; });
+        return supportPromise;
     }
 
     // ======================= export / import of blobs =======================
@@ -970,6 +983,36 @@
     NM.vault = {
         lock, blobsForExport, importBlobs,
         isUnlocked: () => !!session,
+        /** Internal kit for other flows (move to a new device). Never exposes the session key. */
+        kit: {
+            ensureSupport, isNative, hereName,
+            hasRecovery: () => !!vault() && vault().keyslots.some((x) => x.type === 'recovery'),
+            usableHere: () => !!vault() && !!support && support.ok && usableHere(vault()),
+            hwUnlock: async () => {
+                try { return await hwUnlock(vault()); } catch (e) {
+                    if (e.code === 'not-this-device') seNotHereFor = slotsHere(vault()).map((x) => x.id).join(',');
+                    throw e;
+                }
+            },
+            unlockRecovery: (text) => V.unlockWithRecovery(vault(), text),
+            /** raw is zeroed. */
+            openSession: async (raw) => { await openSession(raw); ui.lockReason = ''; if (S.view === 'vault') render(); },
+            addHardwareSlot,
+            /** Adds a recovery slot (vault becomes hardware+recovery) and returns the key text for display. raw is not zeroed. */
+            addRecoverySlotText: async (raw) => {
+                const rec = await V.generateRecoveryKey();
+                const slot = await V.makeRecoverySlot(raw, rec.bytes);
+                rec.bytes.fill(0);
+                NM.update(() => { vault().keyslots.push(slot); vault().mode = 'hardware+recovery'; });
+                return rec.text;
+            },
+            obtainRawVdk,
+            /** After restoring data from another device: Secure Enclave slots not created on this Mac aren't usable here. */
+            markRestored: () => { if (isNative()) { try { NM.ls.set(SE_LOCAL, JSON.stringify(seLocal() || [])); } catch (e) { /* */ } } },
+            /** Decrypted file items (title, blobId, size) — only while unlocked. */
+            fileItems: () => (session ? [...session.items.entries()].filter(([, p]) => p.type === 'file' && p.blobId).map(([id, p]) => ({ id, title: p.title || p.fileName, blobId: p.blobId, size: p.size })) : []),
+            recoveryGrid, recoveryActions, recoveryInput, copySecret, printSecret
+        },
         /** another tab / import replaced the document's vault */
         onDocChanged(oldJson) { if (JSON.stringify(S.doc.vault) !== oldJson) lock('silent'); }
     };

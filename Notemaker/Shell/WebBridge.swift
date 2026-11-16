@@ -9,6 +9,7 @@ final class WebBridge: NSObject, WKScriptMessageHandler {
     static let shellVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "2.1.0"
     static let maxBlob = VaultCrypto.maxBlobBytes
     static let maxDocument = 200 * 1024 * 1024
+    static let maxSaveBytes = 1 << 30   // files.save (transfer files up to 1 GB)
 
     weak var webView: WKWebView?
     /// Directories whose pages may talk to the bridge (the bundled web UI, and the self-test page).
@@ -21,6 +22,7 @@ final class WebBridge: NSObject, WKScriptMessageHandler {
     var onChrome: ((NSColor) -> Void)?
     var onStorageSaved: (() -> Void)?
     var onSelfTestDone: (([String: Any]) -> Void)?
+    var onSelfTestTrigger: ((String, String, @escaping (Bool) -> Void) -> Void)?
     var windowProvider: (() -> NSWindow?)?
 
     let services = NativeServices()
@@ -30,7 +32,11 @@ final class WebBridge: NSObject, WKScriptMessageHandler {
     func send(_ type: String, _ data: [String: Any] = [:]) {
         var detail = data
         detail["type"] = type
-        guard pageReady, let wv = webView else { queuedEvents.append(detail); return }
+        guard pageReady, let wv = webView else {
+            if logCalls { print("bridge → event \(type) (queued until the page is ready)"); fflush(stdout) }
+            queuedEvents.append(detail); return
+        }
+        if logCalls { print("bridge → event \(type)" + (type == "openTransfer" ? " (\((data["base64"] as? String)?.count ?? 0) base64 chars)" : "")); fflush(stdout) }
         wv.callAsyncJavaScript("window.dispatchEvent(new CustomEvent('notemaker-native', { detail: detail }));",
                                arguments: ["detail": detail], in: nil, in: .page, completionHandler: nil)
     }
@@ -186,8 +192,10 @@ final class WebBridge: NSObject, WKScriptMessageHandler {
             case "files.save":
                 let name = try Validate.string(p["suggestedName"], "suggestedName", max: 255)
                 _ = try Validate.optString(p["mime"], "mime", max: 200)
-                let bytes = try Validate.base64(p["base64"], "base64", maxBytes: Self.maxDocument)
-                services.saveFile(name: name, data: bytes, window: windowProvider?()) { path in
+                // Transfer files can be hundreds of MB: only check the size here; decode + write happen off the main thread.
+                let b64 = try Validate.string(p["base64"], "base64", max: (Self.maxSaveBytes / 3 + 2) * 4)
+                services.saveFile(name: name, base64: b64, window: windowProvider?()) { path, error in
+                    if let error { done(.failure(BridgeError(error))); return }
                     done(.success(path.map { ["saved": true, "path": $0] as [String: Any] } ?? ["saved": false]))
                 }
             case "clipboard.write":
@@ -219,6 +227,11 @@ final class WebBridge: NSObject, WKScriptMessageHandler {
             case "shell.log":
                 if logCalls, let m = p["message"] as? String { print("page: \(m.prefix(500))"); fflush(stdout) }
                 done(.success(["ok": true]))
+            case "selftest.trigger":
+                guard selfTestMode, let trigger = onSelfTestTrigger else { throw BridgeError("unknown method") }
+                let action = try Validate.string(p["action"], "action", max: 40)
+                let arg = try Validate.string(p["arg"] ?? "", "arg", max: 100_000)
+                trigger(action, arg) { ok in done(.success(["ok": ok])) }
             case "selftest.done":
                 guard selfTestMode else { throw BridgeError("unknown method") }
                 onSelfTestDone?(p)

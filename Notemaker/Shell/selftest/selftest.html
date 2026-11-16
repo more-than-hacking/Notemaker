@@ -101,6 +101,25 @@ async function run() {
   await rejects("clipboard.write", { text: "x", clearAfterSeconds: 0 }, "clipboard.write validates clearAfterSeconds");
   await rejects("no.such.method", {}, "unknown method rejected", "unknown method");
 
+  log("transfer (.notemaker)");
+  const nextEvent = (type, trigger) => new Promise((res, rej) => {
+    const t = setTimeout(() => { window.removeEventListener("notemaker-native", h); rej(new Error("no " + type + " event")); }, 5000);
+    const h = e => { if (e.detail && e.detail.type === type) { clearTimeout(t); window.removeEventListener("notemaker-native", h); res(e.detail); } };
+    window.addEventListener("notemaker-native", h);
+    trigger();
+  });
+  try {
+    ok((await req("selftest.trigger", { action: "infoPlist" })).ok === true, "Info.plist registers .notemaker document type + UTI com.mth.notemaker.transfer");
+    for (const command of ["transfer", "restore", "export", "import"]) {
+      const ev = await nextEvent("menu", () => req("selftest.trigger", { action: "menu", arg: command }));
+      ok(ev.command === command, "File menu item sends menu “" + command + "”");
+    }
+    const content = JSON.stringify({ format: "notemaker-transfer", version: 1, note: "self-test ✓" });
+    const ev = await nextEvent("openTransfer", () => req("selftest.trigger", { action: "openTransfer", arg: content }));
+    ok(ev.fileName === "Selftest transfer.notemaker", "openTransfer fileName", ev.fileName);
+    ok(new TextDecoder().decode(unb64(ev.base64)) === content, "openTransfer base64 = file bytes");
+  } catch (e) { ok(false, "transfer", e.message); }
+
   log("events");
   const evt = await new Promise(res => {
     const h = e => { window.removeEventListener("notemaker-native", h); res(e.detail); };

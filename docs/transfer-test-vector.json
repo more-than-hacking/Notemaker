@@ -1,0 +1,37 @@
+{
+  "_readme": "Test-only. \"file\" is a complete .notemaker transfer file; \"code\" opens it; \"expected\" is the decrypted payload manifest.",
+  "code": "64S36D-1N6RVK-GE9T7C-Y3TFHZ-810M4G-T45540",
+  "codeBytes": "MTIzNDU2Nzg5Ojs8PT4/QEFCQ0Q=",
+  "expectedManifest": {
+    "tasks": 1,
+    "notes": 1,
+    "lockedNotes": 0,
+    "habits": 0,
+    "templates": 0,
+    "focusSessions": 0,
+    "vaultItems": 4,
+    "vaultFiles": 1,
+    "vaultFileBytes": 28,
+    "docSha256": "ffd1249f27a5b3c921caf4bb8d197ef8c5ce3d26dcadcb6e71fd88e718f295c7"
+  },
+  "file": {
+    "format": "notemaker-transfer",
+    "version": 1,
+    "createdAt": "2026-11-16T09:00:00Z",
+    "source": {
+      "app": "web",
+      "appVersion": "2.1.0",
+      "device": "Test laptop"
+    },
+    "summary": {
+      "tasks": 1,
+      "notes": 1,
+      "vaultItems": 4,
+      "vaultFiles": 1,
+      "bytes": 2480
+    },
+    "salt": "UVJTVFVWV1hZWltcXV5fYA==",
+    "iv": "YWJjZGVmZ2hpamts",
+    "ct": "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"
+  }
+}

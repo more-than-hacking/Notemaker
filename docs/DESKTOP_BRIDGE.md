@@ -54,8 +54,9 @@ Plain links to http(s) URLs open in the default browser, never inside the shell.
 |---|---|---|
 | `lock` | `{ reason: "sleep" \| "screen-lock" \| "quit" }` | the vault must lock immediately |
 | `openDay` | `{ day }` | a reminder notification was clicked |
-| `menu` | `{ command }` | native menu / shortcut: `newTask`, `palette`, `search`, `today`, `prevDay`, `nextDay`, `view:<name>` (`day`, `calendar`, `planner`, `board`, `habits`, `insights`, `vault`, `settings`), `export`, `import`, `review`, `focus.toggle`, `lockVault`, `undo`, `redo` |
+| `menu` | `{ command }` | native menu / shortcut: `newTask`, `palette`, `search`, `today`, `prevDay`, `nextDay`, `view:<name>` (`day`, `calendar`, `planner`, `board`, `habits`, `insights`, `vault`, `settings`), `export`, `import`, `transfer` (File → Move to a New Mac…), `restore` (File → Restore from Another Device…), `review`, `focus.toggle`, `lockVault`, `undo`, `redo` |
 | `beforeQuit` | – | flush pending saves (the shell waits up to 1 s for a `storage.save`) |
+| `openTransfer` | `{ fileName, base64 }` | the user double-clicked / opened a `.notemaker` transfer file (or dropped it on the Dock icon); the web UI starts the Restore flow with it (max 1 GB) |
 
 ## Web-side behaviour in the shell
 - Storage uses `storage.load/save` instead of localStorage (first launch: if `storage.load` returns null
@@ -66,3 +67,9 @@ Plain links to http(s) URLs open in the default browser, never inside the shell.
 - Reminders use `notify.sync` (so they fire when the app is closed) instead of the in-page checker.
 - Exports/downloads use `files.save`; copying secrets uses `clipboard.write` with `clearAfterSeconds: 30`.
 - The service worker is not registered (file://). No external network access is needed.
+
+## Transfer files (v1.1 of this bridge)
+The app registers the `.notemaker` document type (UTI `com.mth.notemaker.transfer`, conforms to `public.json`,
+MIME `application/vnd.notemaker.transfer+json`, role Viewer, icon = app icon). Opening one sends `openTransfer`
+(queued until the page is ready). `files.save` is used to write transfer files (suggested name
+`Notemaker transfer YYYY-MM-DD.notemaker`).

@@ -95,17 +95,23 @@ final class NativeServices: NSObject {
 
     // MARK: Files
 
-    func saveFile(name: String, data: Data, window: NSWindow?, _ done: @escaping (String?) -> Void) {
+    /// NSSavePanel; the base64 payload (up to 1 GB decoded) is decoded and written off the main thread.
+    func saveFile(name: String, base64: String, window: NSWindow?, _ done: @escaping (String?, String?) -> Void) {
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = (name as NSString).lastPathComponent
+        panel.nameFieldStringValue = (name as NSString).lastPathComponent   // e.g. "Notemaker transfer 2026-11-16.notemaker"
         panel.canCreateDirectories = true
         panel.isExtensionHidden = false
+        panel.allowsOtherFileTypes = true      // no allowedContentTypes: any extension (incl. .notemaker) is kept as typed
         let finish: (NSApplication.ModalResponse) -> Void = { resp in
-            guard resp == .OK, let url = panel.url else { done(nil); return }
-            do { try data.write(to: url, options: [.atomic]); done(url.path) }
-            catch {
-                let a = NSAlert(error: error); a.runModal()
-                done(nil)
+            guard resp == .OK, let url = panel.url else { done(nil, nil); return }
+            DispatchQueue.global(qos: .userInitiated).async {
+                var err: String?
+                if let data = Data(base64Encoded: base64) {
+                    do { try data.write(to: url, options: [.atomic]) } catch { err = error.localizedDescription }
+                } else {
+                    err = "base64 is not valid"
+                }
+                DispatchQueue.main.async { err == nil ? done(url.path, nil) : done(nil, err) }
             }
         }
         if let window { panel.beginSheetModal(for: window, completionHandler: finish) } else { finish(panel.runModal()) }

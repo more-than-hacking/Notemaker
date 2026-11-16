@@ -56,8 +56,8 @@
             const f = NM.focus.state();
             if (f.running) NM.focus.togglePause(); else NM.focus.start(null);
         });
-        $('#exportBtn').addEventListener('click', NM.exportJson);
-        $('#importBtn').addEventListener('click', () => $('#importFile').click());
+        $('#exportBtn').addEventListener('click', () => { closeSidebar(); NM.transfer.start(); });
+        $('#importBtn').addEventListener('click', () => { closeSidebar(); NM.transfer.restore(); });
         $('#importFile').addEventListener('change', (e) => { NM.importFile(e.target.files[0]); e.target.value = ''; });
         $('#helpBtn').addEventListener('click', () => { closeSidebar(); NM.openHelp(); });
         $('#menuBtn').addEventListener('click', () => document.body.classList.add('sidebar-open'));
@@ -147,6 +147,7 @@
         newTask: () => NM.focusQuickAdd(), palette: () => NM.openPalette(), search: () => NM.openSearch(),
         today: () => NM.goToday(), prevDay: () => NM.moveDate(-1), nextDay: () => NM.moveDate(1),
         export: () => NM.exportJson(), import: () => $('#importFile').click(), review: () => NM.openReview(S.date),
+        transfer: () => NM.transfer.start(), restore: () => NM.transfer.restore(),
         'focus.toggle': () => { if (NM.focus.state().running) NM.focus.togglePause(); else NM.focus.start(null); },
         lockVault: () => NM.vault.lock('manual'), undo: () => NM.undoTasks(), redo: () => NM.redoTasks()
     };
@@ -189,6 +190,7 @@
         NM.focus.restore();
         NM.startScheduler();
         NM.syncNative(true);
+        NM.transfer.maybeWelcome();
         if (S.migratedToDesktop) NM.toast('Your browser data was copied into the desktop app (data.json).', 'ok', 8000);
         else if (S.migratedFromV1) NM.toast('Upgraded to Notemaker v2 — your v1 tasks and notes were migrated (the v1 copy is kept as a backup).', 'ok', 8000);
         if (S.loadError) NM.toast(S.loadError, 'error', 10000);

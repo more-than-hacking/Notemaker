@@ -139,6 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     func showWindow() {
+        guard let window else { return }   // may be called before launch finishes (open-file at launch)
         if window.isMiniaturized { window.deminiaturize(nil) }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -153,11 +154,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     /// notemaker://day/YYYY-MM-DD opens that day.
+    /// notemaker://day/YYYY-MM-DD URLs, and .notemaker transfer files (double-click, Open With, Dock-icon drop).
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where url.scheme == "notemaker" && url.host == "day" {
-            let day = url.lastPathComponent
-            if Day.isValid(day) { showWindow(); bridge.send("openDay", ["day": day]) }
+        for url in urls {
+            if url.scheme == "notemaker", url.host == "day" {
+                let day = url.lastPathComponent
+                if Day.isValid(day) { showWindow(); bridge.send("openDay", ["day": day]) }
+            } else if url.isFileURL {
+                openTransferFile(url)
+            }
         }
+    }
+
+    static let maxTransferBytes = 1 << 30   // 1 GB (docs/TRANSFER_FORMAT.md)
+
+    /// Read a .notemaker file off the main thread and send `openTransfer` (queued until the page is ready).
+    func openTransferFile(_ url: URL, completion: ((Bool) -> Void)? = nil) {
+        showWindow()
+        let name = url.lastPathComponent
+        guard url.pathExtension.lowercased() == "notemaker" else {
+            alert("“\(name)” isn’t a Notemaker transfer file.", "Transfer files end in .notemaker. To restore an older JSON backup, use File → Import….")
+            completion?(false); return
+        }
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        guard size <= Self.maxTransferBytes else {
+            alert("“\(name)” is too large.", "Transfer files can be at most 1 GB; this one is \(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)).")
+            completion?(false); return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result: Result<String, Error> = Result { try Data(contentsOf: url, options: .mappedIfSafe).base64EncodedString() }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                switch result {
+                case .success(let b64):
+                    self.bridge.send("openTransfer", ["fileName": name, "base64": b64])
+                    self.showWindow()
+                    completion?(true)
+                case .failure(let e):
+                    self.alert("Couldn’t open “\(name)”.", e.localizedDescription)
+                    completion?(false)
+                }
+            }
+        }
+    }
+
+    private func alert(_ title: String, _ text: String) {
+        let a = NSAlert()
+        a.messageText = title
+        a.informativeText = text
+        a.alertStyle = .warning
+        if let window, window.isVisible { a.beginSheetModal(for: window) } else { a.runModal() }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -356,6 +402,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             cmd("Export…", "export", "e", [.command, .shift]),
             cmd("Import…", "import", "i", [.command, .shift]),
             .separator(),
+            cmd("Move to a New Mac…", "transfer"),
+            cmd("Restore from Another Device…", "restore"),
+            .separator(),
             item("Close Window", #selector(NSWindow.performClose(_:)), "w"),
         ])
         _ = submenu("Edit", [
@@ -405,12 +454,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         return main
     }
 
+    private func findMenuItem(command: String) -> NSMenuItem? {
+        func search(_ m: NSMenu?) -> NSMenuItem? {
+            for i in m?.items ?? [] {
+                if i.representedObject as? String == command { return i }
+                if let f = search(i.submenu) { return f }
+            }
+            return nil
+        }
+        return search(NSApp.mainMenu)
+    }
+
     // MARK: Self-test (--bridge-selftest)
 
     private func runSelfTest() {
         let page = selfTestRoot.appendingPathComponent("selftest.html")
         guard FileManager.default.fileExists(atPath: page.path) else {
             print("SELFTEST: selftest.html missing from bundle"); exit(2)
+        }
+        bridge.onSelfTestTrigger = { [weak self] action, arg, done in
+            guard let self else { return }
+            switch action {
+            case "menu":
+                // Fire the real menu item for a command (proves it exists and is wired up).
+                guard let item = self.findMenuItem(command: arg) else { done(false); return }
+                self.menuCommand(item)
+                done(true)
+            case "openTransfer":
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent("Selftest transfer.notemaker")
+                try? Data(arg.utf8).write(to: url)
+                self.openTransferFile(url) { ok in try? FileManager.default.removeItem(at: url); done(ok) }
+            case "infoPlist":
+                let info = Bundle.main.infoDictionary ?? [:]
+                let docs = info["CFBundleDocumentTypes"] as? [[String: Any]] ?? []
+                let utis = info["UTExportedTypeDeclarations"] as? [[String: Any]] ?? []
+                done(docs.contains { ($0["LSItemContentTypes"] as? [String])?.contains("com.mth.notemaker.transfer") == true }
+                     && utis.contains { $0["UTTypeIdentifier"] as? String == "com.mth.notemaker.transfer" })
+            default: done(false)
+            }
         }
         bridge.onSelfTestDone = { result in
             let ok = (result["failed"] as? Int ?? 1) == 0

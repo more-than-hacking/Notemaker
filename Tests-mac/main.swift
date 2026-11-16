@@ -535,5 +535,38 @@ do {
     check((try? Validate.string(String(repeating: "x", count: 11), "s", max: 10)) == nil, "string length limit")
 }
 
+section("Info.plist: .notemaker transfer document type")
+for (label, path) in [("source Notemaker/Info.plist", "Notemaker/Info.plist"),
+                      ("built app Info.plist", "build_output/Notemaker.app/Contents/Info.plist")] {
+    let url = URL(fileURLWithPath: root).appendingPathComponent(path)
+    guard let raw = try? Data(contentsOf: url) else {
+        if label.hasPrefix("built") { print("    (\(path) not built — skipped)") } else { check(false, "\(label) readable") }
+        continue
+    }
+    guard let plist = try? PropertyListSerialization.propertyList(from: raw, format: nil) as? [String: Any] else {
+        check(false, "\(label) parses"); continue
+    }
+    let docs = plist["CFBundleDocumentTypes"] as? [[String: Any]] ?? []
+    let doc = docs.first { ($0["LSItemContentTypes"] as? [String])?.contains("com.mth.notemaker.transfer") == true }
+    check(doc != nil, "\(label): CFBundleDocumentTypes has com.mth.notemaker.transfer")
+    eq(doc?["CFBundleTypeRole"] as? String, "Viewer", "\(label): role Viewer")
+    eq(doc?["CFBundleTypeIconFile"] as? String, "Notemaker", "\(label): document icon Notemaker")
+    eq(doc?["CFBundleTypeExtensions"] as? [String], ["notemaker"], "\(label): document extension")
+    let utis = plist["UTExportedTypeDeclarations"] as? [[String: Any]] ?? []
+    let uti = utis.first { $0["UTTypeIdentifier"] as? String == "com.mth.notemaker.transfer" }
+    check(uti != nil, "\(label): UTExportedTypeDeclarations declares com.mth.notemaker.transfer")
+    let conforms = Set(uti?["UTTypeConformsTo"] as? [String] ?? [])
+    check(conforms.isSuperset(of: ["public.json", "public.data"]), "\(label): UTI conforms to public.json + public.data")
+    let tags = uti?["UTTypeTagSpecification"] as? [String: Any] ?? [:]
+    eq(tags["public.filename-extension"] as? [String], ["notemaker"], "\(label): UTI extension notemaker")
+    eq(tags["public.mime-type"] as? [String], ["application/vnd.notemaker.transfer+json"], "\(label): UTI MIME type")
+    eq(uti?["UTTypeIconFile"] as? String, "Notemaker", "\(label): UTI icon")
+    check((plist["CFBundleURLTypes"] as? [[String: Any]])?.isEmpty == false, "\(label): notemaker:// URL scheme kept")
+    if label.hasPrefix("built") {
+        eq(plist["CFBundleIdentifier"] as? String, "com.mth.notemaker", "built app bundle id")
+        check(plist["NSHumanReadableCopyright"] is String, "built app copyright")
+    }
+}
+
 print("\n\(passes) passed, \(failures) failed")
 exit(failures == 0 ? 0 : 1)

@@ -271,7 +271,11 @@
                         C.builtinTemplates().forEach((t) => { if (!have.has(t.name.toLowerCase())) S.doc.templates.push(t); });
                     }) }, 'Restore built-ins'))),
             sec('dataSection', 'Data',
-                row('Backup (JSON, format v2)', 'Interchangeable with the macOS app. Imports accept v2 and v1 backups.', h('div', { class: 'inline' },
+                row('Move to a new device', 'One encrypted file with everything, including your vault, opened with a one-time code.',
+                    h('button', { class: 'btn primary small', type: 'button', onclick: () => NM.transfer.start() }, NM.icon('upload'), ' Move…')),
+                row('Restore from another device', 'Open a .notemaker transfer file from your old device.',
+                    h('button', { class: 'btn small', type: 'button', onclick: () => NM.transfer.restore() }, NM.icon('download'), ' Restore…')),
+                row('Unencrypted backup (JSON)', 'Readable by anyone who gets the file — private notes and the vault stay encrypted, everything else doesn’t.', h('div', { class: 'inline' },
                     h('button', { class: 'btn small', type: 'button', onclick: NM.exportJson }, NM.icon('download'), ' Export'),
                     h('button', { class: 'btn small', type: 'button', onclick: () => document.getElementById('importFile').click() }, NM.icon('upload'), ' Import'))),
                 row('Markdown', 'Tasks as checkboxes plus the note, for the selected day or week.', h('button', { class: 'btn small', type: 'button', onclick: () => NM.exportMarkdown() }, '⬇ Export .md')),

@@ -72,16 +72,12 @@ else
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSSupportsAutomaticTermination</key><false/>
   <key>NSHumanReadableCopyright</key><string>Copyright © 2025–2026 Notemaker. All rights reserved.</string>
-  <key>CFBundleURLTypes</key>
-  <array>
-    <dict>
-      <key>CFBundleURLName</key><string>com.mth.notemaker.day</string>
-      <key>CFBundleURLSchemes</key><array><string>notemaker</string></array>
-    </dict>
-  </array>
 </dict>
 </plist>
 PLIST
+  # URL scheme + .notemaker document type / UTI come from Notemaker/Info.plist (also used by Xcode).
+  /usr/libexec/PlistBuddy -c "Merge $ROOT/Notemaker/Info.plist" "$APP/Contents/Info.plist" >/dev/null
+  plutil -lint "$APP/Contents/Info.plist" >/dev/null
   printf 'APPL????' > "$APP/Contents/PkgInfo"
 fi
 

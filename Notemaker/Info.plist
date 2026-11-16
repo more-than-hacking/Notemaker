@@ -2,7 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Merged with the generated Info.plist by Xcode (build.sh writes its own complete Info.plist). -->
+	<!-- Merged into the app's Info.plist by Xcode (GENERATE_INFOPLIST_FILE) and by build.sh (PlistBuddy Merge).
+	     Single source for the URL scheme and the .notemaker transfer document type (docs/TRANSFER_FORMAT.md). -->
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -12,6 +13,58 @@
 			<array>
 				<string>notemaker</string>
 			</array>
+		</dict>
+	</array>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Notemaker Transfer File</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>CFBundleTypeIconFile</key>
+			<string>Notemaker</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.mth.notemaker.transfer</string>
+			</array>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>notemaker</string>
+			</array>
+			<key>CFBundleTypeMIMETypes</key>
+			<array>
+				<string>application/vnd.notemaker.transfer+json</string>
+			</array>
+		</dict>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.mth.notemaker.transfer</string>
+			<key>UTTypeDescription</key>
+			<string>Notemaker Transfer File</string>
+			<key>UTTypeIconFile</key>
+			<string>Notemaker</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>notemaker</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.notemaker.transfer+json</string>
+				</array>
+			</dict>
 		</dict>
 	</array>
 </dict>
