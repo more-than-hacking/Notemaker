@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 /// Native side of docs/DESKTOP_BRIDGE.md.
 @MainActor
 final class WebBridge: NSObject, WKScriptMessageHandler {
-    static let shellVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "2.1.0"
+    static let shellVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "2.5.0"
     static let maxBlob = VaultCrypto.maxBlobBytes
     static let maxDocument = 200 * 1024 * 1024
     static let maxSaveBytes = 1 << 30   // files.save (transfer files up to 1 GB)
