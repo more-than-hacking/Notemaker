@@ -3,7 +3,7 @@
 <h1 align="center">Notemaker</h1>
 
 <p align="center">Daily tasks, notes, habits and a hardware-protected vault —<br>
-one app that runs in your browser and as a native Mac app.</p>
+one app for Mac, Windows, Linux, Android and the browser.</p>
 
 <p align="center">
   <img src="docs/screenshots/detail-login-dark-1280.png" width="760" alt="Notemaker vault with a saved login">
@@ -25,7 +25,8 @@ one app that runs in your browser and as a native Mac app.</p>
 - Export a day or week as Markdown; full JSON backup / import (the web and Mac apps share one format)
 
 **Vault**: passwords, cards & IDs, secure notes and files, encrypted with a key held in **hardware**
-- Mac: the **Secure Enclave**, unlocked with Touch ID · Browser: a **passkey** (Touch ID or a security key)
+- Mac: the **Secure Enclave** (Touch ID) · Windows: **Windows Hello** (TPM) · Linux: a **USB security key** (FIDO2)
+  · Android: the phone's **hardware keystore** (fingerprint / screen lock) · Browser: a **passkey**
 - Optional printable **recovery key** to move the vault between devices or recover it
 - Password generator, strength meter, copy with clipboard auto-clear, auto-lock
 
@@ -36,6 +37,13 @@ one app that runs in your browser and as a native Mac app.</p>
 ---
 
 ## Install
+
+Pick your system: [Mac](#option-a-macos-app-recommended-on-a-mac) · [Windows](#option-b-windows) ·
+[Linux](#option-c-linux) · [Android](#option-d-android) · [Browser](#option-e-in-the-browser)
+
+Ready-made downloads for every system are on the [**Releases**](https://github.com/more-than-hacking/Notemaker/releases)
+page. Until the first release is published, build from source with the steps below. Every download is free; the apps
+aren't signed with paid certificates, so Mac and Windows show a one-time warning (how to get past it is explained below).
 
 ### Option A: macOS app (recommended on a Mac)
 
@@ -69,7 +77,85 @@ Prefer a disk image? `./build_and_create_dmg.sh` creates `Notemaker.dmg`. Open i
 The app builds for your Mac's architecture (Apple Silicon or Intel). Vault hardware keys need a Mac with a
 Secure Enclave (Apple Silicon or a T2 chip); other Macs can still use the vault with a recovery key.
 
-### Option B: in the browser
+### Option B: Windows
+
+Windows 10 or 11, x64 or ARM.
+
+**Download:** from [Releases](https://github.com/more-than-hacking/Notemaker/releases), take the `.msi`
+(x64) or the `-setup.exe` (x64 or ARM) and run it.
+
+**First launch:** the installer isn't code-signed (that costs money), so Windows may show
+*"Windows protected your PC"*. Click **More info → Run anyway**. Only needed once.
+
+- The vault uses **Windows Hello** (face, fingerprint or Windows PIN). Set it up first in
+  Settings → Accounts → Sign-in options if you haven't.
+- Reminders fire while Notemaker is running. Closing the window keeps it in the system tray;
+  use **Quit** from the tray icon to really exit.
+- The installer registers `.notemaker` files, so double-clicking a transfer file opens it.
+
+**Build from source (optional):** install [Node.js 18+](https://nodejs.org), [Rust](https://rustup.rs) and the
+"Desktop development with C++" workload of Visual Studio Build Tools (free). Then in PowerShell:
+
+```powershell
+git clone https://github.com/more-than-hacking/Notemaker.git
+cd Notemaker\platforms\tauri
+npm ci
+npx tauri build
+# installers: src-tauri\target\release\bundle\msi\  and  ...\bundle\nsis\
+```
+
+### Option C: Linux
+
+x86_64 or ARM64 (aarch64), any recent distribution with a desktop.
+
+**Download:** from [Releases](https://github.com/more-than-hacking/Notemaker/releases):
+
+| Your system | File | Install |
+|---|---|---|
+| Ubuntu, Debian, Mint, Pop!_OS | `.deb` | `sudo apt install ./Notemaker_*.deb` |
+| Fedora, RHEL, openSUSE | `.rpm` | `sudo dnf install ./Notemaker-*.rpm` |
+| Anything else | `.AppImage` | `chmod +x Notemaker_*.AppImage && ./Notemaker_*.AppImage` |
+
+- The vault's hardware key on Linux is a **USB security key** (YubiKey, SoloKey, Nitrokey, Google Titan,
+  any FIDO2 key). You touch it to unlock, and enter its PIN if it has one.
+  If Notemaker says it has *no permission* to use the key, install your distribution's FIDO rules
+  (`sudo apt install libu2f-udev` on Debian/Ubuntu, `libfido2` on Fedora/Arch) and plug the key in again.
+- **No security key?** Use the vault with a recovery key only. It's still encrypted, but nothing physical
+  protects it, so keep the recovery key offline and use a strong login password.
+- Reminders fire while Notemaker is running (it stays in the tray when you close the window).
+
+**Build from source (optional), Debian/Ubuntu:**
+
+```bash
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev \
+                 libxdo-dev libssl-dev libudev-dev rpm build-essential curl
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh      # Rust (skip if installed)
+# Node.js 18+ from your package manager or https://nodejs.org
+git clone https://github.com/more-than-hacking/Notemaker.git
+cd Notemaker/platforms/tauri
+npm ci
+npx tauri build --bundles deb,rpm,appimage
+# packages: src-tauri/target/release/bundle/
+```
+
+### Option D: Android
+
+Android 7.0 or later.
+
+**Download:** from [Releases](https://github.com/more-than-hacking/Notemaker/releases) on your phone, open the
+`.apk`. Android asks to allow installs from your browser or Files app: **Settings → Allow from this source**, then
+**Install**. (Notemaker isn't on the Play Store; an F-Droid listing is planned.)
+
+- The vault key lives in the phone's hardware keystore and opens with your fingerprint, face or screen lock.
+  Set up a screen lock first.
+- Reminders arrive even when the app is closed. Allow notifications when asked.
+- To move from your laptop: in the desktop app use **Move to a New Device…**, copy the `.notemaker` file
+  to the phone, and open it with Notemaker.
+
+Building the Android app yourself needs Android Studio's SDK and NDK; see
+[`platforms/tauri/README.md`](platforms/tauri/README.md).
+
+### Option E: in the browser
 
 **Quick look**: open `index.html` directly (double-click). Everything works except the vault's passkeys,
 which browsers only allow on a real web address.
@@ -94,10 +180,13 @@ or a FIDO2 security key. If yours doesn't, the app tells you, and you can still 
 | | Location |
 |---|---|
 | Mac app | `~/Library/Application Support/Notemaker/data.json` (+ `vault-blobs/` for encrypted vault files) |
-| Vault hardware key (Mac) | Inside the Secure Enclave; only an encrypted handle is kept in your login Keychain |
+| Windows app | `%APPDATA%\com.mth.notemaker\` |
+| Linux app | `~/.local/share/com.mth.notemaker/` |
+| Android app | The app's private storage (removed if you uninstall; export a backup first) |
+| Vault hardware key | Mac: Secure Enclave · Windows: TPM via Windows Hello · Linux: your security key · Android: hardware keystore. It never leaves that hardware |
 | Browser | The browser's local storage for this site (+ IndexedDB for encrypted vault files) |
 
-Nothing is sent to any server. **Back up** with **Export backup** (⇧⌘E on Mac, Settings → Data in the browser);
+Nothing is sent to any server. **Back up** with **Export backup** (⇧⌘E on Mac, Ctrl+Shift+E on Windows/Linux, Settings → Data everywhere);
 the file opens in either app. Data from Notemaker v1 (web or Mac) is migrated automatically on first launch.
 
 ## The vault and your security, honestly
@@ -118,6 +207,8 @@ and [`docs/DESKTOP_BRIDGE.md`](docs/DESKTOP_BRIDGE.md).
 
 ## Keyboard shortcuts
 
+Windows and Linux apps use the Mac shortcuts with **Ctrl** instead of ⌘.
+
 | | Mac app | Browser |
 |---|---|---|
 | New task | ⌘N | `n` |
@@ -133,10 +224,13 @@ and [`docs/DESKTOP_BRIDGE.md`](docs/DESKTOP_BRIDGE.md).
 | Problem | Fix |
 |---|---|
 | `redefinition of module 'SwiftBridging'` while building | Known Command Line Tools issue. `build.sh` detects it and rebuilds with a workaround automatically. |
-| *"Notemaker can't be opened"* | Right-click → **Open** (self-signed app), once. |
+| *"Notemaker can't be opened"* (Mac) | Right-click → **Open** (self-signed app), once. |
+| *"Windows protected your PC"* | **More info → Run anyway** (unsigned installer), once. |
+| Linux: "no permission to use the security key" | Install FIDO udev rules (`libu2f-udev` / `libfido2`), replug the key. |
+| Android: "App not installed" | Uninstall an older Notemaker built with a different key first (export a backup before). |
 | Reminders don't appear | Allow notifications for Notemaker in System Settings → Notifications. |
 | Vault says passkeys aren't available (browser) | Use `http://localhost:8000` (not `file://`) in Safari 18+ / Chrome 116+. |
-| Vault: "This vault was created on another device" | Unlock with the recovery key, then choose **Add this Mac / this browser**. |
+| Vault: "This vault was created on another device" | Unlock with the recovery key, then choose **Add this Mac / PC / phone / security key**. |
 | Start over (Mac) | Quit Notemaker and move `~/Library/Application Support/Notemaker/data.json` away. |
 
 ## Development
