@@ -79,7 +79,11 @@ async function run() {
       ok(typeof slot.device === "string" && typeof slot.createdAt === "string", "device + createdAt present");
       ok((await req("se.deleteSlot", { slotId })).ok === true, "se.deleteSlot");
       await rejects("se.unwrapSlot", { slot }, "se.unwrapSlot after delete → not-this-device", "not-this-device");
-    } catch (e) { ok(false, "se.createSlot", e.message); }
+    } catch (e) {
+      // -25308 = errSecInteractionNotAllowed: macOS refuses Secure Enclave key creation while the Mac is locked.
+      if (/-25308/.test(e.message)) log("  ○ se.createSlot — skipped: the Mac is locked (macOS blocks Secure Enclave keys while locked)");
+      else ok(false, "se.createSlot", e.message);
+    }
   }
   await rejects("se.createSlot", { slotId: uuid(), label: "x", vdk: b64(new Uint8Array(16)) }, "se.createSlot rejects 16-byte vdk");
   await rejects("se.unwrapSlot", { slot: { id: uuid(), type: "recovery" } }, "se.unwrapSlot rejects non-SE slot");

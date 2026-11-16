@@ -29,16 +29,19 @@ YAML
 
 nm_swiftc() {
   local log="$NM_BUILD/swiftc-last.log"
+  # First attempt is captured quietly: on a fresh machine it usually hits the CLT SwiftBridging bug,
+  # whose wall of errors is harmless because we retry with the workaround below.
   swiftc -swift-version 5 -sdk "$NM_SDK" -target "$NM_TARGET" -module-cache-path "$NM_BUILD/module-cache" \
-    "${NM_OVERLAY_FLAGS[@]}" "$@" 2>&1 | tee "$log"
-  local rc=${PIPESTATUS[0]}
+    "${NM_OVERLAY_FLAGS[@]}" "$@" > "$log" 2>&1 && local rc=0 || local rc=$?   # "|| rc" keeps `set -e` callers alive
   if [ $rc -ne 0 ] && [ ${#NM_OVERLAY_FLAGS[@]} -eq 0 ] && grep -q "redefinition of module 'SwiftBridging'" "$log"; then
-    echo "note: hit the Command Line Tools SwiftBridging module-map bug; retrying with a VFS overlay…"
+    echo "→ Applying the Command Line Tools SwiftBridging workaround (normal on first build; takes a few minutes)…"
     nm_make_overlay
     touch "$NM_BUILD/.use-overlay"
     swiftc -swift-version 5 -sdk "$NM_SDK" -target "$NM_TARGET" -module-cache-path "$NM_BUILD/module-cache" \
       "${NM_OVERLAY_FLAGS[@]}" "$@" 2>&1 | tee "$log"
     rc=${PIPESTATUS[0]}
+  elif [ $rc -ne 0 ] || grep -qE "warning:|error:" "$log"; then
+    cat "$log"
   fi
   return $rc
 }
