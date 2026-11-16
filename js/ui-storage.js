@@ -10,7 +10,11 @@
     let state = 'off';                 // off | ok | permission | unavailable
     let persistAsked = false, persisted = null, conflictOpen = false;
 
-    const env = () => ({ native: !!NM.native, hasPicker: typeof window.showDirectoryPicker === 'function' || typeof window.__notemakerPickFolder === 'function',
+    /* Test hook for headless runs (the OS folder picker can't be automated). Honoured only on a local file:// page
+       opened with ?nm-test — never on a served site or in the desktop shell. */
+    const testPicker = () => (location.protocol === 'file:' && !NM.native && new URLSearchParams(location.search).has('nm-test')
+        && typeof window.__notemakerPickFolder === 'function') ? window.__notemakerPickFolder : null;
+    const env = () => ({ native: !!NM.native, hasPicker: typeof window.showDirectoryPicker === 'function' || !!testPicker(),
         secure: window.isSecureContext !== false, mobile: /Android|iPhone|iPad|iPod/.test(ua) });
     const supported = () => St.folderSupported(env());
     const mode = () => (NM.native ? 'native' : NM.ls.get(MODE) === 'folder' ? 'folder' : 'browser');
@@ -50,7 +54,8 @@
     }
     function mirror() { try { NM.persist.save(S.doc); } catch (e) { /* cache only */ } }
     async function pickFolder() {
-        if (typeof window.__notemakerPickFolder === 'function') return window.__notemakerPickFolder(); // test hook (headless browsers can't drive the OS picker)
+        const hook = testPicker();
+        if (hook) return hook();
         return window.showDirectoryPicker({ id: 'notemaker', mode: 'readwrite', startIn: 'documents' });
     }
 

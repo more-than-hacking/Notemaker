@@ -240,3 +240,7 @@
         return t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
     };
 })();
+
+// '1 task' / '2 tasks'
+window.NM = window.NM || {};
+NM.plural = (n, word) => n + ' ' + word + (n === 1 ? '' : 's');

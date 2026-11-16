@@ -65,11 +65,14 @@
     const SE_LOCAL = 'notemaker_se_local';
     function seLocal() { try { const v = JSON.parse(NM.ls.get(SE_LOCAL) || 'null'); return Array.isArray(v) ? v : null; } catch (e) { return null; } }
     function rememberSe(id) { const l = seLocal() || []; if (!l.includes(id)) l.push(id); try { NM.ls.set(SE_LOCAL, JSON.stringify(l)); } catch (e) { /* */ } }
+    function forgetSe(ids) { const l = seLocal(); if (!l) return; try { NM.ls.set(SE_LOCAL, JSON.stringify(l.filter((x) => !ids.includes(x)))); } catch (e) { /* */ } }
+    let deadSe = [];   // Secure Enclave slots whose Touch ID key stopped working (biometry-changed)
     function usableHere(v) {
         const here = slotsHere(v);
         if (!here.length) return false;
         if (isNative()) {
             if (seNotHereFor === here.map((s) => s.id).join(',')) return false;
+            if (here.every((s) => deadSe.includes(s.id))) return false;
             const known = seLocal();
             if (known && !here.some((s) => known.includes(s.id))) return false;
         }
@@ -121,7 +124,7 @@
     }
     async function hwCreate(raw) {
         const label = (support && support.device) || (isNative() ? 'This Mac' : browserLabel());
-        if (isNative()) { const slot = await NC.seVault.createSlot(NM.native, V, raw, label); rememberSe(slot.id); return slot; }
+        if (isNative()) { const slot = await NC.seVault.createSlot(NM.native, V, raw, label, !!S.doc.settings.vaultBiometryOnly); rememberSe(slot.id); return slot; }
         return passkeyCreate(raw, label);
     }
     /** → { raw (verified VDK bytes; caller zeroes), slot } */
@@ -151,6 +154,7 @@
         }
         session = { key, items, broken };
         lastActivity = Date.now();
+        syncVaultState();
         ui.note = ''; ui.recoveryOpen = false; ui.selectedId = null; ui.draft = null; ui.editing = false;
     }
     function lock(reason, detail) {
@@ -159,6 +163,7 @@
         if (pendingRaw) { pendingRaw.fill(0); pendingRaw = null; }
         if (ui.setup) { if (ui.setup.raw) ui.setup.raw.fill(0); abandonSetupSlot(ui.setup); ui.setup = null; }
         if (session) { session.items.clear(); session.key = null; session = null; }
+        if (wasOpen) syncVaultState();
         // unsaved uploads are encrypted orphans now — remove them
         ui.pendingBlobs.forEach((id) => NM.vaultBlobs.delete(id).catch(() => { /* */ }));
         ui.pendingBlobs.clear();
@@ -169,6 +174,11 @@
         if (root) { NM.clear(root); root.dataset.state = ''; }
         if (S.view === 'vault') render();
         if (wasOpen && reason === 'idle' && S.view !== 'vault') NM.toast('Vault locked after ' + autoLockMin() + ' minutes of inactivity', '', 4000);
+    }
+    /** Desktop shell: tell the native side whether the vault is open (it runs a system-idle check while unlocked). */
+    function syncVaultState() {
+        if (!NM.native) return;
+        NM.native.request('app.vaultState', NC.vaultStatePayload(!!session, S.doc.settings)).catch(() => { /* older shell */ });
     }
     function abandonSetupSlot(st) { if (st && st.hwSlot) hwRemove(st.hwSlot); }
 
@@ -186,7 +196,7 @@
     async function copySecret(text, what) {
         if (!text) return;
         if (isNative()) {
-            try { await NM.native.request('clipboard.write', { text, clearAfterSeconds: 30 }); NM.toast('Copied — clears in 30 s', 'ok'); } catch (e) { NM.toast('Couldn’t copy: ' + e.message, 'error'); }
+            try { await NM.native.request('clipboard.write', NC.secretClipboardParams(text)); NM.toast('Copied — won’t sync to your other devices, clears in 30 s', 'ok'); } catch (e) { NM.toast('Couldn’t copy: ' + e.message, 'error'); }
             return;
         }
         try { await navigator.clipboard.writeText(text); } catch (e) { NM.toast('Couldn’t copy — click into the page and try again.', 'error'); return; }
@@ -274,6 +284,7 @@
             body: h('div', { class: 'form' },
                 h('p', { class: 'modal-text' }, 'Each of these can open your vault.' + (v.mode === 'hardware-only' ? ' There is no recovery key.' : '')),
                 list,
+                NM.native ? h('div', { class: 'modal-settings', id: 'kmSecurity' }) : null,
                 h('div', { class: 'inline' },
                     canHw ? h('button', { class: 'btn small', type: 'button', onclick: async () => {
                         const raw = await obtainRawVdk('Adding ' + hereName());
@@ -288,6 +299,15 @@
                 support && !support.ok ? h('p', { class: 'muted small' }, isNative() ? 'Touch ID keys can’t be added on this Mac.' : 'Passkeys can’t be added on this page (needs https or localhost and a supported browser).') : null),
             actions: [{ label: 'Done', kind: 'primary' }]
         }));
+        if (NM.native) {
+            const box = m.box.querySelector('#kmSecurity');
+            const mrow = (label, desc, control) => h('div', { class: 'set-row' }, h('div', { class: 'set-text' }, h('div', { class: 'set-label' }, label), h('div', { class: 'muted small' }, desc)), h('div', { class: 'set-control' }, control));
+            NM.vault.capabilities().then((caps) => {
+                if (!box.isConnected) return;
+                NM.clear(box);
+                NM.vault.securityRows(mrow, caps, () => { m.close(); openKeyslots(); }).forEach((r) => box.appendChild(r));
+            });
+        }
     }
 
     // ======================= small UI helpers =======================
@@ -476,26 +496,32 @@
     }
     const LOCK_REASONS = {
         idle: () => 'Locked after ' + autoLockMin() + ' minutes of inactivity', hidden: () => 'Locked while the window was in the background',
-        sleep: () => 'Locked because your Mac went to sleep', 'screen-lock': () => 'Locked because your screen locked', quit: () => ''
+        sleep: () => 'Locked because your Mac went to sleep', 'screen-lock': () => 'Locked because your screen locked', quit: () => '',
+        'idle-system': () => 'Locked because your Mac was idle', 'window-hidden': () => 'Locked when Notemaker was hidden'
     };
     function renderLocked(root) {
         const v = vault();
-        const canHw = support && support.ok && slotsHere(v).length && usableHere(v);
+        const issue = ui.seIssue;   // { screen, slotId } after a Touch ID error
+        const canHw = support && support.ok && slotsHere(v).length && usableHere(v) && !(issue && !issue.screen.hardware);
         const hasRecovery = v.keyslots.some((s) => s.type === 'recovery');
         const col = h('div', { class: 'v-center' });
-        col.appendChild(iconTile('lock', 'big'));
-        col.appendChild(h('h2', { class: 'v-title' }, 'Vault locked'));
-        col.appendChild(h('p', { class: 'v-lead muted' }, v.items.length + ' item' + (v.items.length === 1 ? '' : 's')));
-        if (ui.lockReason) col.appendChild(h('p', { class: 'v-note muted small' }, ui.lockReason));
+        col.appendChild(iconTile(issue && issue.screen.title ? 'info' : 'lock', 'big'));
+        col.appendChild(h('h2', { class: 'v-title' }, issue && issue.screen.title ? issue.screen.title : 'Vault locked'));
+        col.appendChild(h('p', { class: 'v-lead muted' }, issue && issue.screen.title ? issue.screen.text : v.items.length + ' item' + (v.items.length === 1 ? '' : 's')));
+        if (ui.lockReason && !(issue && issue.screen.title)) col.appendChild(h('p', { class: 'v-note muted small' }, ui.lockReason));
         const showRecovery = ui.recoveryOpen || (!canHw && hasRecovery && support);
         if (!support) col.appendChild(h('button', { class: 'btn primary v-cta', type: 'button', disabled: true }, 'Checking…'));
         else if (canHw && !ui.recoveryOpen) {
             const btn = h('button', { class: 'btn primary v-cta', type: 'button', disabled: ui.busy, onclick: async () => {
                 ui.busy = true; ui.note = ''; render();
-                try { const r = await hwUnlock(vault()); ui.lockReason = ''; await openSession(r.raw); } catch (e) {
+                try { const r = await hwUnlock(vault()); ui.lockReason = ''; ui.seIssue = null; await openSession(r.raw); } catch (e) {
                     if (e.code === 'not-this-device') seNotHereFor = slotsHere(vault()).map((s) => s.id).join(',');
-                    ui.note = e.code === 'not-this-device' ? '' : e.code === 'cancelled' ? (isNative() ? 'Touch ID was cancelled — try again when you’re ready.' : 'The passkey prompt was closed — try again when you’re ready.') : e.message;
-                    ui.noteKind = e.code === 'cancelled' ? 'muted' : 'warn';
+                    if (e.code === 'biometry-changed' && e.slotId) deadSe.push(e.slotId);
+                    if (e.screen && e.screen.title) { ui.seIssue = { screen: e.screen, slotId: e.slotId }; ui.note = ''; ui.recoveryOpen = !e.screen.hardware; }
+                    else {
+                        ui.note = e.code === 'not-this-device' ? '' : e.code === 'cancelled' ? (isNative() ? 'Touch ID was cancelled — try again when you’re ready.' : 'The passkey prompt was closed — try again when you’re ready.') : e.message;
+                        ui.noteKind = e.code === 'cancelled' ? 'muted' : 'warn';
+                    }
                 }
                 ui.busy = false; render();
             } }, ui.busy ? 'Waiting for ' + hw() + '…' : isNative() ? 'Unlock with Touch ID' : 'Unlock with passkey');
@@ -505,7 +531,7 @@
             if (!ui.busy) setTimeout(() => { if (!NM.overlayOpen() && S.view === 'vault' && document.activeElement && !NM.isTyping({ target: document.activeElement })) btn.focus(); }, 30);
         } else if (showRecovery && hasRecovery) {
             if (support && !support.ok) col.appendChild(fixPanel());
-            else if (!canHw) col.appendChild(h('p', { class: 'v-note muted' }, (isNative() ? 'This Mac' : 'This browser') + ' can’t open the vault yet. Use your recovery key — you can add ' + (isNative() ? 'Touch ID' : 'a passkey') + ' afterwards.'));
+            else if (!canHw && !issue) col.appendChild(h('p', { class: 'v-note muted' }, (isNative() ? 'This Mac' : 'This browser') + ' can’t open the vault yet. Use your recovery key — you can add ' + (isNative() ? 'Touch ID' : 'a passkey') + ' afterwards.'));
             const unlockBtn = h('button', { class: 'btn primary v-cta', type: 'button', disabled: true });
             unlockBtn.textContent = 'Unlock';
             const rk = recoveryInput((ok) => { unlockBtn.disabled = !ok || ui.busy; });
@@ -515,12 +541,14 @@
                 try {
                     const r = await V.unlockWithRecovery(vault(), rk.input.value);
                     rk.input.value = '';
-                    const offer = support && support.ok && !usableHere(vault());
+                    const replaceDead = isNative() && issue && issue.screen.replaceSlot ? issue.slotId : null;
+                    const offer = replaceDead || (support && support.ok && !usableHere(vault()));
                     if (offer) pendingRaw = r.raw.slice();
-                    ui.lockReason = '';
+                    ui.lockReason = ''; ui.seIssue = null;
                     await openSession(r.raw);
                     ui.busy = false; render();
-                    if (offer) offerAddDevice();
+                    if (replaceDead) offerReplaceTouchId(replaceDead);
+                    else if (offer) offerAddDevice();
                     return;
                 } catch (e) { ui.note = e.message; ui.noteKind = 'warn'; }
                 ui.busy = false; render();
@@ -531,12 +559,57 @@
             col.appendChild(unlockBtn);
             if (ui.note) col.appendChild(h('p', { class: 'v-note ' + (ui.noteKind || 'muted'), role: 'status' }, ui.note));
             if (canHw) col.appendChild(linkBtn('Use ' + (isNative() ? 'Touch ID' : 'your passkey') + ' instead', () => { ui.recoveryOpen = false; ui.note = ''; render(); }));
+            else if (issue && issue.screen.reason === 'biometry-unavailable') col.appendChild(linkBtn('Try Touch ID again', () => { ui.seIssue = null; ui.recoveryOpen = false; ui.note = ''; render(); }));
             setTimeout(() => rk.input.focus(), 30);
         } else {
             if (support && !support.ok) col.appendChild(fixPanel());
             col.appendChild(h('p', { class: 'v-note muted' }, 'This vault has no recovery key, so it only opens on the device that created it.'));
         }
         root.appendChild(col);
+    }
+    /** After biometry-changed + recovery unlock: create a fresh Touch ID key and remove the dead one. */
+    async function offerReplaceTouchId(deadId) {
+        const choice = await NM.choose('Set up Touch ID again?', 'Create a new Touch ID key for this Mac so you can unlock with your fingerprint again. The old key stops working anyway.',
+            [{ label: 'Not now', value: null }, { label: 'Set up Touch ID on this Mac', value: 'add', kind: 'primary' }]);
+        const raw = pendingRaw;
+        pendingRaw = null;
+        if (!raw) return;
+        try {
+            if (choice !== 'add' || !session) return;
+            const r = await NC.seVault.switchPolicy(NM.native, V, vault(), raw, { label: (support && support.device) || 'This Mac', biometryOnly: !!S.doc.settings.vaultBiometryOnly, oldSlotIds: [deadId] });
+            NM.update(() => { vault().keyslots = r.keyslots; });
+            forgetSe([deadId]); deadSe = deadSe.filter((x) => x !== deadId); rememberSe(r.slot.id);
+            NM.toast('Touch ID is set up again on this Mac.', 'ok', 5000);
+            render();
+        } catch (e) { NM.toast(e.message, 'error', 8000); } finally { raw.fill(0); }
+    }
+    /**
+     * Touch ID only on/off for this Mac's key: re-authenticate, create a key with the new policy, then remove the old one.
+     * Returns true when the setting changed. Nothing changes if any step before saving fails.
+     */
+    async function setBiometryOnly(on) {
+        const st = S.doc.settings;
+        if (!vault()) { NM.update(() => { st.vaultBiometryOnly = on; }); return true; }
+        if (on && !vault().keyslots.some((x) => x.type === 'recovery')) { NM.toast('Create a recovery key first — a fingerprint change would otherwise lock you out for good.', 'error', 7000); return false; }
+        const caps = await NC.seVault.capabilities(NM.native);
+        if (on && !caps.enrolled) {
+            await NM.choose('Set up Touch ID first', 'Touch ID isn’t set up or available right now. Add a fingerprint in System Settings › Touch ID & Password, then turn this on again.', [{ label: 'OK', value: null, kind: 'primary' }]);
+            return false;
+        }
+        const raw = await obtainRawVdk(on ? 'Switching to Touch ID only' : 'Allowing your Mac password again');
+        if (!raw) return false;
+        try {
+            const known = seLocal() || [];
+            const oldIds = vault().keyslots.filter((x) => x.type === 'secure-enclave' && known.includes(x.id)).map((x) => x.id);
+            const r = await NC.seVault.switchPolicy(NM.native, V, vault(), raw, { label: (support && support.device) || 'This Mac', biometryOnly: on, oldSlotIds: oldIds });
+            NM.update(() => { vault().keyslots = r.keyslots; st.vaultBiometryOnly = on; });
+            forgetSe(oldIds); rememberSe(r.slot.id);
+            NM.toast(on ? 'Only Touch ID opens the vault on this Mac now.' : 'Touch ID or your Mac password can open the vault now.', 'ok', 5000);
+            return true;
+        } catch (e) {
+            NM.toast(e.code === 'cancelled' ? 'Cancelled — nothing changed.' : e.message + ' Nothing changed.', e.code === 'cancelled' ? '' : 'error', 8000);
+            return false;
+        } finally { raw.fill(0); }
     }
     async function offerAddDevice() {
         const choice = await NM.choose(isNative() ? 'Use Touch ID next time?' : 'Use a passkey next time?',
@@ -977,13 +1050,52 @@
         });
         window.addEventListener('pagehide', () => lock('silent'));
         window.addEventListener('beforeunload', () => lock('silent'));
-        if (NM.native) NM.native.on('lock', (d) => lock('system', d && d.reason));
+        if (NM.native) {
+            NM.native.on('lock', (d) => lock('system', d && d.reason));
+            NM.native.on('windowHidden', () => { if (session && NC.shouldLockOnHide(S.doc.settings)) lock('window-hidden'); });
+        }
     }
 
     NM.vault = {
         lock, blobsForExport, importBlobs,
         isUnlocked: () => !!session,
         /** Internal kit for other flows (move to a new device). Never exposes the session key. */
+        syncState: syncVaultState,
+        capabilities: () => (NM.native ? NC.seVault.capabilities(NM.native) : Promise.resolve({ touchID: false, enrolled: false })),
+        setBiometryOnly,
+        /**
+         * Settings rows for the desktop shell's Touch ID policy and lock-on-hide (empty in a browser).
+         * row(label, desc, control) builds one row; caps: cached se.capabilities (null = still loading).
+         */
+        securityRows(row, caps, onChange) {
+            if (!NM.native) return [];
+            const st = S.doc.settings, out = [];
+            const sw = (checked, disabled, fn, label) => h('label', { class: 'switch' + (disabled ? ' disabled' : '') },
+                h('input', { type: 'checkbox', checked, disabled, 'aria-label': label, onchange: (e) => fn(e.target.checked, e.target) }), h('span', { class: 'switch-ui' }));
+            if (caps && caps.touchID) {
+                const noRecovery = !!vault() && !vault().keyslots.some((x) => x.type === 'recovery');
+                const desc = h('span', null, 'Your Mac password won’t open the vault. If fingerprints change, use your recovery key.',
+                    noRecovery && !st.vaultBiometryOnly ? h('span', { class: 'set-warn' }, ' Needs a recovery key first — otherwise a fingerprint change would lock you out for good.') : null,
+                    !caps.enrolled ? h('span', { class: 'set-warn' }, ' Touch ID isn’t set up right now — add a fingerprint in System Settings first.') : null);
+                out.push(row('Touch ID only', desc, h('div', { class: 'inline' },
+                    noRecovery && !st.vaultBiometryOnly ? h('button', { class: 'btn small', type: 'button', onclick: async () => { if (await NM.vault.createRecoveryKey()) onChange(); } }, 'Create a recovery key first') : null,
+                    sw(!!st.vaultBiometryOnly, noRecovery && !st.vaultBiometryOnly, async (on, input) => {
+                        input.disabled = true;
+                        const ok = await setBiometryOnly(on);
+                        if (!ok) input.checked = !on;
+                        onChange();
+                    }, 'Touch ID only'))));
+            }
+            out.push(row('Lock when Notemaker is hidden', 'Locks the vault when you minimize, hide or close Notemaker, or switch to another app for more than 30 seconds.',
+                sw(!!st.vaultLockOnHide, false, (on) => { NM.update(() => { st.vaultLockOnHide = on; }); onChange(); }, 'Lock when Notemaker is hidden')));
+            return out;
+        },
+        /** Create a recovery key for a hardware-only vault (Settings, before enabling Touch ID only). */
+        createRecoveryKey: async () => {
+            const raw = await obtainRawVdk('Creating a recovery key');
+            if (!raw) return false;
+            try { await addRecoverySlot(raw); return true; } catch (e) { NM.toast(e.message, 'error'); return false; } finally { raw.fill(0); }
+        },
         kit: {
             ensureSupport, isNative, hereName,
             hasRecovery: () => !!vault() && vault().keyslots.some((x) => x.type === 'recovery'),

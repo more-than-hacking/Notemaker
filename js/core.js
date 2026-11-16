@@ -109,7 +109,8 @@
     function defaultSettings() {
         return {
             theme: 'system', autoRollover: true, focusMinutes: 25, breakMinutes: 5, reviewTime: '18:00',
-            weekStartsOn: 1, dayStart: '07:00', dayEnd: '21:00', lockHash: null, vaultAutoLockMinutes: 5
+            weekStartsOn: 1, dayStart: '07:00', dayEnd: '21:00', lockHash: null, vaultAutoLockMinutes: 5,
+            vaultBiometryOnly: false, vaultLockOnHide: false
         };
     }
 
@@ -245,7 +246,9 @@
             dayStart: isValidTime(raw.dayStart) ? raw.dayStart : d.dayStart,
             dayEnd: isValidTime(raw.dayEnd) && (!isValidTime(raw.dayStart) || raw.dayEnd > raw.dayStart) ? raw.dayEnd : d.dayEnd,
             lockHash: normalizeLockHash(raw.lockHash),
-            vaultAutoLockMinutes: int(raw.vaultAutoLockMinutes, d.vaultAutoLockMinutes, 1, 120)
+            vaultAutoLockMinutes: int(raw.vaultAutoLockMinutes, d.vaultAutoLockMinutes, 1, 1440),
+            vaultBiometryOnly: typeof raw.vaultBiometryOnly === 'boolean' ? raw.vaultBiometryOnly : d.vaultBiometryOnly,
+            vaultLockOnHide: typeof raw.vaultLockOnHide === 'boolean' ? raw.vaultLockOnHide : d.vaultLockOnHide
         };
     }
 

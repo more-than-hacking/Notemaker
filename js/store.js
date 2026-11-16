@@ -131,7 +131,9 @@
     NM.goToday = () => NM.setDate(S.today);
     NM.setView = function (v) {
         if (!NM.views[v]) return;
+        const changed = S.view !== v;
         S.view = v;
+        if (changed) { try { window.scrollTo(0, 0); } catch (e) { /* */ } }
         NM.saveUi();
         NM.render();
     };

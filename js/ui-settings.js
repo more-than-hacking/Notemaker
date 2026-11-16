@@ -215,6 +215,7 @@
 
     function render() {
         const root = document.getElementById('view-settings');
+        if (NM.native && S.seCaps === undefined) { S.seCaps = null; NM.vault.capabilities().then((c) => { S.seCaps = c; if (S.view === 'settings') render(); }); }
         const st = S.doc.settings;
         NM.clear(root);
         const accent = NM.ls.get('notemaker_accent') || 'violet';
@@ -256,9 +257,12 @@
                         S.passcode ? h('button', { class: 'btn ghost small', type: 'button', onclick: () => { S.passcode = null; S.unlocked = {}; NM.toast('All private notes locked'); NM.render(); } }, 'Lock all now') : null)
                         : h('button', { class: 'btn primary small', type: 'button', onclick: setPasscode }, NM.icon('lock'), ' Set passcode'))),
             sec('vaultSection', 'Vault',
-                row('Auto-lock after', 'Minutes of inactivity (also when the window is hidden that long, and on ' + (NM.native ? 'sleep, screen lock and quit' : 'closing the tab') + ').',
-                    h('div', { class: 'inline' }, numInput('vaultAutoLockMinutes', 1, 120), 'min')),
-                row('Vault', S.doc.vault ? S.doc.vault.items.length + ' encrypted item(s) · ' + S.doc.vault.keyslots.length + ' key(s) · ' + S.doc.vault.mode : 'Not set up yet.',
+                row('Auto-lock after', 'Of inactivity — also when the window is hidden that long, and on ' + (NM.native ? 'sleep, screen lock and quit.' : 'closing the tab.'),
+                    h('select', { class: 'select', 'aria-label': 'Auto-lock after', onchange: (e) => { setSetting('vaultAutoLockMinutes', +e.target.value); if (NM.vault) NM.vault.syncState(); } },
+                        [...new Set([1, 2, 5, 10, 15, 30, 60, 240, st.vaultAutoLockMinutes])].sort((a, b) => a - b).map((v) =>
+                            h('option', { value: v, selected: st.vaultAutoLockMinutes === v }, v < 60 ? v + (v === 1 ? ' minute' : ' minutes') : (v / 60) + (v === 60 ? ' hour' : ' hours'))))),
+                NM.vault ? NM.vault.securityRows(row, S.seCaps, () => render()) : null,
+                row('Vault', S.doc.vault ? NM.plural(S.doc.vault.items.length, 'encrypted item') + ' · ' + NM.plural(S.doc.vault.keyslots.length, 'key') + ' · ' + (S.doc.vault.mode === 'hardware-only' ? 'hardware only' : 'hardware + recovery key') : 'Not set up yet.',
                     h('button', { class: 'btn small', type: 'button', onclick: () => NM.setView('vault') }, NM.icon('lock'), ' Open vault'))),
             sec('templatesSection', 'Note templates',
                 h('div', { class: 'template-list' }, S.doc.templates.map((t) => h('div', { class: 'template-row' },
@@ -280,7 +284,7 @@
                 row('Unencrypted backup (JSON)', 'Readable by anyone who gets the file — private notes and the vault stay encrypted, everything else doesn’t.', h('div', { class: 'inline' },
                     h('button', { class: 'btn small', type: 'button', onclick: NM.exportJson }, NM.icon('download'), ' Export'),
                     h('button', { class: 'btn small', type: 'button', onclick: () => document.getElementById('importFile').click() }, NM.icon('upload'), ' Import'))),
-                row('Markdown', 'Tasks as checkboxes plus the note, for the selected day or week.', h('button', { class: 'btn small', type: 'button', onclick: () => NM.exportMarkdown() }, '⬇ Export .md')),
+                row('Markdown', 'Tasks as checkboxes plus the note, for the selected day or week.', h('button', { class: 'btn small', type: 'button', onclick: () => NM.exportMarkdown() }, NM.icon('download'), ' Export .md')),
                 row(NM.storage && NM.storage.folderActive() ? 'Your data' : 'Stored in this browser', S.doc.tasks.length + ' tasks · ' + Object.keys(S.doc.notes).length + ' notes · ' + S.doc.habits.length + ' habits · ' + S.doc.focusSessions.length + ' focus sessions · ~' +
                     Math.round(JSON.stringify(S.doc).length / 1024) + ' KB' + (NM.native ? ' (data.json)' : '') + (NM.ls.get('notemaker_tasks') ? ' · v1 data kept as backup' : ''), null))));
     }

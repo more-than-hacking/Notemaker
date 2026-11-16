@@ -194,3 +194,93 @@ test('Secure Enclave createSlot passes the VDK as base64 and validates the retur
     const se = await N.seVault.available(N.createBridge(fakeShell({ 'se.available': () => ({ available: true, device: 'MBP' }) }).win));
     assert.deepEqual(se, { available: true, device: 'MBP' });
 });
+
+// ---------------- v1.2: Touch ID policy, error screens, lock-on-hide, vaultState, concealed copy ----------------
+test('Touch ID only: switchPolicy creates the new slot first, then deletes the old one', async () => {
+    const vault = V.normalizeVault(vec.vault);
+    const raw = V.unb64(vec.vdk);
+    const oldSe = vault.keyslots.find((s) => s.type === 'secure-enclave');
+    const order = [];
+    const shell = fakeShell({
+        'se.createSlot': (p) => { order.push('create'); assert.equal(p.biometryOnly, true); assert.equal(p.vdk, vec.vdk);
+            return Object.assign({}, oldSe, { id: p.slotId, label: p.label, policy: 'biometry-current-set' }); },
+        'se.deleteSlot': (p) => { order.push('delete:' + p.slotId); return { ok: true }; }
+    });
+    const r = await N.seVault.switchPolicy(N.createBridge(shell.win), V, vault, raw, { label: 'MBP', biometryOnly: true, oldSlotIds: [oldSe.id] });
+    assert.deepEqual(order, ['create', 'delete:' + oldSe.id], 'create before delete');
+    assert.equal(r.slot.policy, 'biometry-current-set');
+    assert.ok(!r.keyslots.some((s) => s.id === oldSe.id), 'old slot removed');
+    assert.ok(r.keyslots.some((s) => s.id === r.slot.id));
+    assert.equal(r.keyslots.length, vault.keyslots.length);
+    assert.deepEqual(r.deleteFailed, []);
+    assert.equal(vault.keyslots.length, 3, 'input vault not mutated');
+});
+
+test('Touch ID only: failures leave the vault unchanged; a failed handle delete still drops the old slot from the vault', async () => {
+    const vault = V.normalizeVault(vec.vault);
+    const before = JSON.stringify(vault);
+    const oldSe = vault.keyslots.find((s) => s.type === 'secure-enclave');
+    for (const msg of ['biometry-unavailable', 'cancelled', 'some native failure']) {
+        let deleted = false;
+        const b = N.createBridge(fakeShell({ 'se.createSlot': () => { throw new Error(msg); }, 'se.deleteSlot': () => { deleted = true; return { ok: true }; } }).win);
+        await assert.rejects(() => N.seVault.switchPolicy(b, V, vault, V.unb64(vec.vdk), { biometryOnly: true, oldSlotIds: [oldSe.id] }),
+            (e) => (msg === 'some native failure' ? e.code === 'error' : e.code === msg));
+        assert.equal(deleted, false, 'old key untouched when the new one couldn’t be made');
+        assert.equal(JSON.stringify(vault), before);
+    }
+    const b2 = N.createBridge(fakeShell({
+        'se.createSlot': (p) => Object.assign({}, oldSe, { id: p.slotId, policy: 'user-presence' }),
+        'se.deleteSlot': () => { throw new Error('not-this-device'); }
+    }).win);
+    const r = await N.seVault.switchPolicy(b2, V, vault, V.unb64(vec.vdk), { biometryOnly: false, oldSlotIds: [oldSe.id] });
+    assert.deepEqual(r.deleteFailed, [oldSe.id]);
+    assert.ok(!r.keyslots.some((s) => s.id === oldSe.id), 'the old wrap is gone, so the old key can’t open the vault');
+    const unavailable = await assert.rejects(() => N.seVault.createSlot(N.createBridge(fakeShell({ 'se.createSlot': () => { throw new Error('biometry-unavailable'); } }).win), V, V.unb64(vec.vdk), 'x', true),
+        (e) => /System Settings/.test(e.message));
+    void unavailable;
+});
+
+test('se.capabilities and slot policy survive normalisation', async () => {
+    const caps = await N.seVault.capabilities(N.createBridge(fakeShell({ 'se.capabilities': () => ({ touchID: true, enrolled: false }) }).win));
+    assert.deepEqual(caps, { touchID: true, enrolled: false });
+    assert.deepEqual(await N.seVault.capabilities(N.createBridge(fakeShell({}).win)), { touchID: false, enrolled: false }, 'older shell');
+    const v = JSON.parse(JSON.stringify(vec.vault));
+    v.keyslots[0].policy = 'biometry-current-set';
+    assert.equal(V.normalizeVault(v).keyslots[0].policy, 'biometry-current-set');
+    v.keyslots[0].policy = 'evil';
+    assert.equal(V.normalizeVault(v).keyslots[0].policy, undefined);
+    const st = C.normalizeSettings({ vaultBiometryOnly: true, vaultLockOnHide: true, vaultAutoLockMinutes: 1440 });
+    assert.equal(st.vaultBiometryOnly, true); assert.equal(st.vaultLockOnHide, true); assert.equal(st.vaultAutoLockMinutes, 1440);
+    assert.deepEqual([C.defaultSettings().vaultBiometryOnly, C.defaultSettings().vaultLockOnHide], [false, false]);
+});
+
+test('unlock error codes → screens', async () => {
+    const vault = V.normalizeVault(vec.vault);
+    const changed = await N.seVault.unlock(N.createBridge(fakeShell({ 'se.unwrapSlot': () => { throw new Error('biometry-changed'); } }).win), V, vault).catch((e) => e);
+    assert.equal(changed.code, 'biometry-changed');
+    assert.equal(changed.slotId, '22222222-2222-4222-8222-222222222222', 'the dead slot is named so it can be replaced');
+    assert.equal(changed.screen.recovery, true); assert.equal(changed.screen.hardware, false); assert.equal(changed.screen.replaceSlot, true);
+    assert.match(changed.screen.text, /^Your fingerprints changed, so this Mac’s Touch ID key no longer works\. Unlock with your recovery key, then set up Touch ID again\.$/);
+    const un = N.seErrorScreen('biometry-unavailable', 'user-presence');
+    assert.equal(un.hardware, true, 'Mac password still works');
+    assert.match(un.text, /Use your Mac password or recovery key\./);
+    const unOnly = N.seErrorScreen('biometry-unavailable', 'biometry-current-set');
+    assert.equal(unOnly.hardware, false, 'Touch ID only → recovery key only');
+    assert.match(unOnly.text, /use your recovery key/);
+    const lockout = N.seErrorScreen('biometry-lockout');
+    assert.equal(lockout.text, 'Too many attempts. Unlock your Mac with your password, then try again.');
+    assert.equal(lockout.hardware, true);
+    assert.equal(N.seErrorScreen('cancelled').quiet, true);
+    const lo = await N.seVault.unlock(N.createBridge(fakeShell({ 'se.unwrapSlot': () => { throw new Error('biometry-lockout'); } }).win), V, vault).catch((e) => e);
+    assert.equal(lo.code, 'biometry-lockout');
+});
+
+test('lock on hide, vaultState payload, concealed copy params', () => {
+    assert.equal(N.shouldLockOnHide({ vaultLockOnHide: true }), true);
+    assert.equal(N.shouldLockOnHide({ vaultLockOnHide: false }), false);
+    assert.equal(N.shouldLockOnHide(null), false);
+    assert.deepEqual(N.vaultStatePayload(true, { vaultAutoLockMinutes: 2 }), { unlocked: true, autoLockMinutes: 2 });
+    assert.deepEqual(N.vaultStatePayload(false, { vaultAutoLockMinutes: 99999 }), { unlocked: false, autoLockMinutes: 1440 });
+    assert.deepEqual(N.vaultStatePayload(false, {}), { unlocked: false, autoLockMinutes: 5 });
+    assert.deepEqual(N.secretClipboardParams('hunter2'), { text: 'hunter2', clearAfterSeconds: 30, concealed: true });
+});

@@ -73,7 +73,7 @@
         S.today = today;
         if (wasOnToday) { if (NM.beforeDateChange) NM.beforeDateChange(today); S.date = today; }
         const n = NM.runRollover();
-        if (n) NM.toast(n + ' unfinished task(s) rolled over to today');
+        if (n) NM.toast(NM.plural(n, 'unfinished task') + ' rolled over to today');
         NM.render();
         if (NM.syncNative) NM.syncNative(true);
     }

@@ -103,7 +103,7 @@
         if (st.kind === 'focus') {
             const mins = Math.floor((st.durationMin * 60000 - remaining()) / 60000);
             log('focus', mins); // partial block: logged, but does not count as a pomodoro
-            if (!silent && mins >= 1) NM.toast('Logged ' + mins + ' focus minute(s)');
+            if (!silent && mins >= 1) NM.toast('Logged ' + NM.plural(mins, 'focus minute'));
         }
         st = null; persist(); stopTicker(); draw();
     }

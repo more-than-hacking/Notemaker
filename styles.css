@@ -924,6 +924,14 @@ body.gated .boot-splash { display: none; }
 .toast.backup { border-left: 4px solid var(--accent); }
 .set-row .tf-rows { margin-top: 8px; }
 
+.set-warn { display: block; margin-top: 4px; color: #B45309; }
+:root[data-theme="dark"] .set-warn { color: #FBBF24; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .set-warn { color: #FBBF24; } }
+.switch.disabled { opacity: 0.45; }
+.switch.disabled .switch-ui { cursor: not-allowed; }
+.modal-settings { border-top: 1px solid var(--border); margin-top: 8px; }
+.modal-settings:empty { display: none; }
+
 /* ---------------- responsive ---------------- */
 @media (max-width: 1200px) {
     .insight-grid { grid-template-columns: 1fr 1fr; }

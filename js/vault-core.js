@@ -270,7 +270,9 @@
             return Object.assign(base, { credentialId: k.credentialId, rpId: s(k.rpId, 300), prfSalt: k.prfSalt, salt: k.salt });
         }
         if (!isB64(k.ephemeralPublicKey, 65)) return null;
-        return Object.assign(base, { ephemeralPublicKey: k.ephemeralPublicKey, publicKey: isB64(k.publicKey) ? k.publicKey : '', device: s(k.device, 200) });
+        const out = Object.assign(base, { ephemeralPublicKey: k.ephemeralPublicKey, publicKey: isB64(k.publicKey) ? k.publicKey : '', device: s(k.device, 200) });
+        if (k.policy === 'user-presence' || k.policy === 'biometry-current-set') out.policy = k.policy;
+        return out;
     }
     /** Returns a clean vault object (without blobs) or null. Blobs are returned separately by splitBlobs. */
     function normalizeVault(v) {
