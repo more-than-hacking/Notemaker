@@ -12,7 +12,7 @@ enum SecureEnclaveKeys {
     static let service = "com.mth.notemaker.vault"
 
     enum SEError: Error, LocalizedError {
-        case unavailable, accessControl, notThisDevice, cancelled, failed(String)
+        case unavailable, accessControl, notThisDevice, cancelled, biometryUnavailable, biometryChanged, biometryLockout, failed(String)
         /// Error strings are part of the bridge contract ("cancelled", "not-this-device").
         var errorDescription: String? {
             switch self {
@@ -20,6 +20,9 @@ enum SecureEnclaveKeys {
             case .accessControl: return "Could not create the Secure Enclave access control."
             case .notThisDevice: return "not-this-device"
             case .cancelled: return "cancelled"
+            case .biometryUnavailable: return "biometry-unavailable"
+            case .biometryChanged: return "biometry-changed"
+            case .biometryLockout: return "biometry-lockout"
             case .failed(let s): return s
             }
         }
@@ -31,19 +34,48 @@ enum SecureEnclaveKeys {
     static var deviceName: String { Host.current().localizedName ?? "This Mac" }
     static var keysDir: URL { DataFile.root.appendingPathComponent("vault-keys", isDirectory: true) }
 
+    static let policyPresence = "user-presence"
+    static let policyBiometry = "biometry-current-set"
+
     // MARK: Bridge operations
 
+    /// `se.capabilities`: Touch ID hardware present, and fingers enrolled (i.e. biometry usable now).
+    static func capabilities() -> (touchID: Bool, enrolled: Bool) {
+        let ctx = LAContext()
+        var err: NSError?
+        let usable = ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err)
+        // biometryType is filled in by canEvaluatePolicy even when nothing is enrolled.
+        let hasTouchID = ctx.biometryType == .touchID || (err.map { $0.code == LAError.biometryNotEnrolled.rawValue } ?? false)
+        return (hasTouchID, usable)
+    }
+
+    /// Opaque hash of the currently enrolled fingerprints (nil if biometry isn't usable).
+    static func biometryDomainState() -> Data? {
+        let ctx = LAContext()
+        var err: NSError?
+        guard ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err) else { return nil }
+        return ctx.evaluatedPolicyDomainState
+    }
+    private static func domainKey(_ slotId: String) -> String { "seBiometryDomainState.\(slotId)" }
+
     /// `se.createSlot`: new SE key (no prompt at creation), store its handle, wrap the VDK to its public key.
-    static func createSlot(slotId: String, label: String, vdk: Data) throws -> (Keyslot, Location) {
+    /// `biometryOnly`: Touch ID only (`.biometryCurrentSet`) — the key stops working if fingerprints change.
+    static func createSlot(slotId: String, label: String, vdk: Data, biometryOnly: Bool = false) throws -> (Keyslot, Location) {
         guard isAvailable else { throw SEError.unavailable }
+        if biometryOnly && !capabilities().enrolled { throw SEError.biometryUnavailable }
         var err: Unmanaged<CFError>?
-        guard let ac = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-                                                       [.privateKeyUsage, .userPresence], &err) else { throw SEError.accessControl }
+        let flags: SecAccessControlCreateFlags = biometryOnly ? [.privateKeyUsage, .biometryCurrentSet] : [.privateKeyUsage, .userPresence]
+        guard let ac = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, flags, &err)
+        else { throw SEError.accessControl }
         let key = try SecureEnclave.P256.KeyAgreement.PrivateKey(accessControl: ac)
         let loc = try save(handle: key.dataRepresentation, slotId: slotId)
         do {
-            let slot = try VaultCrypto.wrapForSecureEnclave(vdk: vdk, sePublicKey: key.publicKey, slotId: slotId,
+            var slot = try VaultCrypto.wrapForSecureEnclave(vdk: vdk, sePublicKey: key.publicKey, slotId: slotId,
                                                             label: label, device: deviceName)
+            slot.policy = biometryOnly ? policyBiometry : policyPresence
+            if biometryOnly, let state = biometryDomainState() {
+                UserDefaults.standard.set(state, forKey: domainKey(slotId))   // not secret: lets us detect enrollment changes
+            }
             return (slot, loc)
         } catch {
             delete(slotId: slotId)
@@ -55,11 +87,20 @@ enum SecureEnclaveKeys {
     static func unwrapSlot(_ slot: Keyslot, reason: String = "unlock your Notemaker vault") throws -> Data {
         guard isAvailable else { throw SEError.unavailable }
         guard slot.type == "secure-enclave", let handle = load(slotId: slot.id) else { throw SEError.notThisDevice }
+        let biometryOnly = slot.policy == policyBiometry
+        if biometryOnly && !capabilities().enrolled {
+            // No Touch ID sensor reachable (e.g. lid closed) or no fingers enrolled.
+            throw SEError.biometryUnavailable
+        }
+        if biometryOnly, let saved = UserDefaults.standard.data(forKey: domainKey(slot.id)),
+           let now = biometryDomainState(), saved != now {
+            throw SEError.biometryChanged     // fingerprints were added/removed: the key is permanently invalid
+        }
         let ctx = LAContext()
         ctx.localizedReason = reason
         let key: SecureEnclave.P256.KeyAgreement.PrivateKey
         do { key = try SecureEnclave.P256.KeyAgreement.PrivateKey(dataRepresentation: handle, authenticationContext: ctx) }
-        catch { throw SEError.notThisDevice }
+        catch { throw biometryOnly ? SEError.biometryChanged : SEError.notThisDevice }
         if let pk = slot.publicKey, let pkData = Data(base64Encoded: pk), pkData != key.publicKey.x963Representation {
             throw SEError.notThisDevice   // a handle exists for this id but belongs to another key
         }
@@ -68,8 +109,21 @@ enum SecureEnclaveKeys {
         } catch let e as VaultCrypto.VaultError {
             throw SEError.failed(e.localizedDescription)
         } catch {
-            throw isCancellation(error) ? SEError.cancelled : SEError.failed("Secure Enclave error: \(error.localizedDescription)")
+            if isCancellation(error) { throw SEError.cancelled }
+            if hasLACode(error, LAError.biometryLockout.rawValue) { throw SEError.biometryLockout }
+            // A .biometryCurrentSet key is invalidated for good when fingerprints are added or removed.
+            if biometryOnly { throw SEError.biometryChanged }
+            throw SEError.failed("Secure Enclave error: \(error.localizedDescription)")
         }
+    }
+
+    static func hasLACode(_ error: Error, _ code: Int) -> Bool {
+        var e: NSError? = error as NSError
+        while let n = e {
+            if n.domain == LAError.errorDomain && n.code == code { return true }
+            e = n.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return false
     }
 
     /// LocalAuthentication cancellations surface through CryptoKit/Security as NSErrors.
@@ -112,6 +166,7 @@ enum SecureEnclaveKeys {
     }
 
     static func delete(slotId: String) {
+        UserDefaults.standard.removeObject(forKey: domainKey(slotId))
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
                                 kSecAttrService as String: service, kSecAttrAccount as String: slotId]
         SecItemDelete(q as CFDictionary)

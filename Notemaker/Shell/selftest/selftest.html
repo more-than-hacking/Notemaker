@@ -77,6 +77,7 @@ async function run() {
       ok(unb64(slot.ephemeralPublicKey).length === 65 && unb64(slot.publicKey).length === 65, "X9.63 public keys are 65 bytes");
       ok(unb64(slot.iv).length === 12 && unb64(slot.ct).length === 48, "slot iv 12 / ct 48 bytes");
       ok(typeof slot.device === "string" && typeof slot.createdAt === "string", "device + createdAt present");
+      ok(slot.policy === "user-presence", "default policy user-presence", slot.policy);
       ok((await req("se.deleteSlot", { slotId })).ok === true, "se.deleteSlot");
       await rejects("se.unwrapSlot", { slot }, "se.unwrapSlot after delete → not-this-device", "not-this-device");
     } catch (e) {
@@ -85,6 +86,20 @@ async function run() {
       else ok(false, "se.createSlot", e.message);
     }
   }
+  const caps = await req("se.capabilities");
+  ok(caps && typeof caps.touchID === "boolean" && typeof caps.enrolled === "boolean", "se.capabilities", JSON.stringify(caps));
+  if (av.available) {
+    const slotId = uuid();
+    try {
+      const slot = await req("se.createSlot", { slotId, label: "Touch ID only", vdk: b64(crypto.getRandomValues(new Uint8Array(32))), biometryOnly: true });
+      ok(caps.enrolled && slot.policy === "biometry-current-set", "se.createSlot biometryOnly → policy biometry-current-set");
+      ok((await req("se.deleteSlot", { slotId })).ok === true, "se.deleteSlot (biometry slot)");
+    } catch (e) {
+      if (/-25308/.test(e.message)) log("  ○ se.createSlot biometryOnly — skipped: the Mac is locked");
+      else ok(!caps.enrolled && e.message === "biometry-unavailable", "se.createSlot biometryOnly without enrolled Touch ID → biometry-unavailable", e.message);
+    }
+  }
+  await rejects("se.createSlot", { slotId: uuid(), label: "x", vdk: b64(new Uint8Array(32)), biometryOnly: "yes" }, "se.createSlot validates biometryOnly", "true or false");
   await rejects("se.createSlot", { slotId: uuid(), label: "x", vdk: b64(new Uint8Array(16)) }, "se.createSlot rejects 16-byte vdk");
   await rejects("se.unwrapSlot", { slot: { id: uuid(), type: "recovery" } }, "se.unwrapSlot rejects non-SE slot");
 
@@ -119,6 +134,45 @@ async function run() {
     ok(ev.fileName === "Selftest transfer.notemaker", "openTransfer fileName", ev.fileName);
     ok(new TextDecoder().decode(unb64(ev.base64)) === content, "openTransfer base64 = file bytes");
   } catch (e) { ok(false, "transfer", e.message); }
+
+  log("integrity (web-manifest.json)");
+  const integ = await req("selftest.trigger", { action: "integrity" });
+  ok(integ.bundleOK === true, "this app bundle verifies", integ.bundleSummary + ", " + Number(integ.millis).toFixed(1) + " ms");
+  ok(integ.millis < 50, "check takes < 50 ms", Number(integ.millis).toFixed(1) + " ms");
+  ok(integ.copyOK === true, "fresh manifest of a copy verifies");
+  ok(integ.tamperedDetected === true, "tampered file detected (index.html)");
+  ok(integ.extraDetected === true, "extra file detected (js/evil.js)");
+  ok(integ.symlinkDetected === true, "symlink detected as unexpected");
+  ok(integ.missingDetected === true, "missing file detected (app.js)");
+  ok(integ.manifestHashDetected === true, "manifest hash mismatch detected");
+  ok(integ.restoredOK === true, "restored copy verifies again");
+  if (integ.error) ok(false, "integrity self-test", integ.error);
+
+  log("concealed clipboard (private pasteboard — your clipboard is untouched)");
+  await rejects("clipboard.write", { text: "x", concealed: "yes" }, "clipboard.write validates concealed", "true or false");
+  const clip = await req("selftest.trigger", { action: "clipboard" });
+  ok(clip.ok === true, "concealed write: ConcealedType + TransientType markers, auto-clear after 1 s", (clip.types || []).join(", "));
+
+  log("vault state / idle lock / window visibility");
+  const collect = async (fn, ms = 300) => {
+    const evs = []; const h = e => evs.push(e.detail);
+    window.addEventListener("notemaker-native", h);
+    try { await fn(); await new Promise(r => setTimeout(r, ms)); } finally { window.removeEventListener("notemaker-native", h); }
+    return evs;
+  };
+  await rejects("app.vaultState", {}, "app.vaultState requires unlocked", "true or false");
+  await rejects("app.vaultState", { unlocked: true, autoLockMinutes: 0 }, "app.vaultState validates autoLockMinutes", "out of range");
+  ok((await req("app.vaultState", { unlocked: false })).ok === true, "app.vaultState locked");
+  let idleRes;
+  const idleEvents = await collect(async () => { idleRes = await req("selftest.trigger", { action: "idle" }); });
+  const locks = idleEvents.filter(e => e.type === "lock");
+  ok(idleRes.timerWhileUnlocked === true && idleRes.timerAfterLock === false, "30 s idle timer runs only while unlocked");
+  ok(locks.length === 1 && locks[0].reason === "idle-system", "system idle above the limit → one lock {reason: idle-system}", JSON.stringify(locks));
+  ok(typeof idleRes.realIdleSeconds === "number" && idleRes.realIdleSeconds >= 0, "system idle time readable", Number(idleRes.realIdleSeconds).toFixed(1) + " s");
+  const winEvents = await collect(() => req("selftest.trigger", { action: "windowEvents" }));
+  const vis = winEvents.filter(e => e.type === "windowHidden" || e.type === "windowShown");
+  ok(vis.length === 2 && vis[0].type === "windowHidden" && vis[0].reason === "minimized" && vis[1].type === "windowShown",
+     "windowHidden {reason} once, then windowShown", JSON.stringify(vis));
 
   log("events");
   const evt = await new Promise(res => {

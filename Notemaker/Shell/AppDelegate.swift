@@ -124,7 +124,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             webView.loadHTMLString("<h2 style='font:15px -apple-system;padding:2em'>The web UI is missing from the app bundle (Contents/Resources/web). Rebuild with ./build.sh.</h2>", baseURL: nil)
             return
         }
+        if !args.contains("--skip-integrity") {
+            let r = checkIntegrity()
+            guard r.ok else {
+                NSLog("Notemaker: integrity check failed — %@", r.summary)
+                showIntegrityFailure(r)
+                return
+            }
+        }
         webView.loadFileURL(index, allowingReadAccessTo: webRoot)
+    }
+
+    /// Verifies Resources/web against web-manifest.json and the manifest hash compiled into this binary.
+    @discardableResult
+    func checkIntegrity() -> WebIntegrity.Report {
+        let t0 = CFAbsoluteTimeGetCurrent()
+        let r = WebIntegrity.verify(webDir: webRoot, manifestURL: resourcesURL.appendingPathComponent("web-manifest.json"),
+                                    expectedManifestSHA256: BuildIntegrity.manifestSHA256)
+        lastIntegrityMillis = (CFAbsoluteTimeGetCurrent() - t0) * 1000
+        if bridge.logCalls { print(String(format: "integrity: %@ (%.1f ms)", r.summary, lastIntegrityMillis)); fflush(stdout) }
+        return r
+    }
+    private(set) var lastIntegrityMillis: Double = 0
+
+    private func showIntegrityFailure(_ r: WebIntegrity.Report) {
+        let a = NSAlert()
+        a.alertStyle = .critical
+        a.messageText = "Notemaker's files were changed after it was built."
+        a.informativeText = "For your safety the app won't open. Reinstall it from the official release."
+        a.addButton(withTitle: "Quit")
+        a.runModal()
+        NSApp.terminate(nil)
     }
 
     /// Match the transparent titlebar to the page header colour.
@@ -143,6 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         if window.isMiniaturized { window.deminiaturize(nil) }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        markShown()
     }
 
     // MARK: Window / app lifecycle
@@ -150,7 +181,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     /// Closing the window hides it, so the page (focus timer, unsaved state) keeps running.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         sender.orderOut(nil)
+        markHidden("closed")
         return false
+    }
+
+    // MARK: windowHidden / windowShown (the page decides whether to lock the vault: settings.vaultLockOnHide)
+
+    private var hiddenReason: String?
+    private var inactiveWork: DispatchWorkItem?
+    static var inactiveDelay: TimeInterval = 30
+
+    private func markHidden(_ reason: String) {
+        guard hiddenReason == nil else { return }
+        hiddenReason = reason
+        bridge.send("windowHidden", ["reason": reason])
+    }
+
+    private func markShown() {
+        guard hiddenReason != nil, let window, window.isVisible, !window.isMiniaturized, !NSApp.isHidden else { return }
+        hiddenReason = nil
+        bridge.send("windowShown")
+    }
+
+    func windowDidMiniaturize(_ notification: Notification) { markHidden("minimized") }
+    func windowDidDeminiaturize(_ notification: Notification) { markShown() }
+    func applicationDidHide(_ notification: Notification) { markHidden("app-hidden") }
+    func applicationDidUnhide(_ notification: Notification) { markShown() }
+
+    func applicationDidResignActive(_ notification: Notification) {
+        inactiveWork?.cancel()
+        let w = DispatchWorkItem { [weak self] in
+            guard let self, !NSApp.isActive else { return }
+            self.markHidden("inactive")
+        }
+        inactiveWork = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.inactiveDelay, execute: w)
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        inactiveWork?.cancel(); inactiveWork = nil
+        markShown()
     }
 
     /// notemaker://day/YYYY-MM-DD opens that day.
@@ -269,6 +339,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                  "subtle: !!(window.crypto && crypto.subtle), localStorageKeys: Object.keys(localStorage).length})"
         webView.evaluateJavaScript(js) { r, e in
             print("page loaded: \(r ?? e?.localizedDescription ?? "")"); fflush(stdout)
+        }
+        // The UI boots asynchronously (storage.load over the bridge), so also report the settled state.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak webView] in
+            webView?.evaluateJavaScript(js) { r, e in
+                print("page settled: \(r ?? e?.localizedDescription ?? "")"); fflush(stdout)
+            }
         }
     }
 
@@ -454,6 +530,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         return main
     }
 
+    /// Self-test: the real bundle verifies, and a copy of it detects tampered / extra / missing files and a changed manifest.
+    private func selfTestIntegrity() -> [String: Any] {
+        var out: [String: Any] = [:]
+        let real = checkIntegrity()
+        out["bundleOK"] = real.ok
+        out["bundleSummary"] = real.summary
+        out["millis"] = lastIntegrityMillis
+        let fm = FileManager.default
+        let tmp = fm.temporaryDirectory.appendingPathComponent("nm-integrity-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: tmp) }
+        do {
+            let web = tmp.appendingPathComponent("web", isDirectory: true)
+            try fm.createDirectory(at: tmp, withIntermediateDirectories: true)
+            try fm.copyItem(at: webRoot, to: web)
+            let manifestURL = tmp.appendingPathComponent("web-manifest.json")
+            let manifest = try WebIntegrity.makeManifest(for: web)
+            try manifest.write(to: manifestURL)
+            let sha = WebIntegrity.sha256Hex(manifest)
+            func check() -> WebIntegrity.Report { WebIntegrity.verify(webDir: web, manifestURL: manifestURL, expectedManifestSHA256: sha) }
+            out["copyOK"] = check().ok
+
+            let target = web.appendingPathComponent("index.html")
+            let original = try Data(contentsOf: target)
+            try (original + Data(" ".utf8)).write(to: target)
+            let t = check(); out["tamperedDetected"] = !t.ok && t.tampered == ["index.html"]
+            try original.write(to: target)
+
+            let extra = web.appendingPathComponent("js/evil.js")
+            try Data("alert(1)".utf8).write(to: extra)
+            let e = check(); out["extraDetected"] = !e.ok && e.extra == ["js/evil.js"]
+            try fm.removeItem(at: extra)
+
+            let link = web.appendingPathComponent("linked.js")
+            try fm.createSymbolicLink(at: link, withDestinationURL: target)
+            let l = check(); out["symlinkDetected"] = !l.ok && l.extra == ["linked.js"]
+            try fm.removeItem(at: link)
+
+            let gone = web.appendingPathComponent("app.js")
+            let appJS = try Data(contentsOf: gone)
+            try fm.removeItem(at: gone)
+            let m = check(); out["missingDetected"] = !m.ok && m.missing == ["app.js"]
+            try appJS.write(to: gone)
+
+            let wrongHash = WebIntegrity.verify(webDir: web, manifestURL: manifestURL, expectedManifestSHA256: String(repeating: "0", count: 64))
+            out["manifestHashDetected"] = !wrongHash.ok && !wrongHash.manifestOK
+            out["restoredOK"] = check().ok
+        } catch {
+            out["error"] = error.localizedDescription
+        }
+        return out
+    }
+
     private func findMenuItem(command: String) -> NSMenuItem? {
         func search(_ m: NSMenu?) -> NSMenuItem? {
             for i in m?.items ?? [] {
@@ -484,6 +612,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 let url = FileManager.default.temporaryDirectory.appendingPathComponent("Selftest transfer.notemaker")
                 try? Data(arg.utf8).write(to: url)
                 self.openTransferFile(url) { ok in try? FileManager.default.removeItem(at: url); done(ok) }
+            case "integrity":
+                done(self.selfTestIntegrity())
+            case "windowEvents":
+                // Drive the same code the AppKit callbacks use (no real minimise/hide, so nothing flickers).
+                self.hiddenReason = nil
+                self.markHidden("minimized")     // → windowHidden {reason: "minimized"}
+                self.markHidden("inactive")      // already hidden → suppressed
+                self.markShown()                 // window visible again → windowShown
+                done(["ok": self.hiddenReason == nil])
+            case "idle":
+                // vault unlocked + measured idle above the limit → one lock {reason: "idle-system"}
+                self.bridge.setVaultState(unlocked: true, autoLockMinutes: 1)
+                let running = self.bridge.idleTimerRunning
+                self.bridge.idleSecondsOverride = 61
+                self.bridge.idleTick(); self.bridge.idleTick()            // second tick must not resend
+                self.bridge.idleSecondsOverride = nil
+                self.bridge.setVaultState(unlocked: false, autoLockMinutes: 1)
+                done(["ok": running && !self.bridge.idleTimerRunning, "timerWhileUnlocked": running,
+                      "timerAfterLock": self.bridge.idleTimerRunning, "realIdleSeconds": WebBridge.systemIdleSeconds()])
+            case "clipboard":
+                let pb = NSPasteboard(name: NSPasteboard.Name("com.mth.notemaker.selftest.\(UUID().uuidString)"))
+                self.bridge.services.writeClipboard("s3cret", clearAfter: 1, concealed: true, pasteboard: pb)
+                let types = (pb.types ?? []).map(\.rawValue)
+                let text = pb.string(forType: .string)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                    let cleared = pb.string(forType: .string) == nil
+                    pb.releaseGlobally()
+                    done(["ok": text == "s3cret" && types.contains("org.nspasteboard.ConcealedType")
+                            && types.contains("org.nspasteboard.TransientType") && cleared,
+                          "types": types, "clearedAfter1s": cleared])
+                }
             case "infoPlist":
                 let info = Bundle.main.infoDictionary ?? [:]
                 let docs = info["CFBundleDocumentTypes"] as? [[String: Any]] ?? []

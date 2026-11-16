@@ -568,5 +568,92 @@ for (label, path) in [("source Notemaker/Info.plist", "Notemaker/Info.plist"),
     }
 }
 
+section("Web UI integrity manifest")
+do {
+    let fm = FileManager.default
+    let tmp = fm.temporaryDirectory.appendingPathComponent("nm-integrity-test-\(UUID().uuidString)", isDirectory: true)
+    defer { try? fm.removeItem(at: tmp) }
+    // Build a Resources folder exactly like build.sh does (tools/bundle-web.sh, Python manifest) …
+    let res = tmp.appendingPathComponent("Resources", isDirectory: true)
+    let gen = tmp.appendingPathComponent("BuildIntegrity.swift")
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/bin/bash")
+    p.arguments = [URL(fileURLWithPath: root).appendingPathComponent("tools/bundle-web.sh").path, res.path, gen.path]
+    p.standardOutput = FileHandle.nullDevice
+    try p.run(); p.waitUntilExit()
+    eq(p.terminationStatus, 0, "tools/bundle-web.sh succeeds")
+    let web = res.appendingPathComponent("web"), manifestURL = res.appendingPathComponent("web-manifest.json")
+    let manifest = try Data(contentsOf: manifestURL)
+    let sha = WebIntegrity.sha256Hex(manifest)
+    let genText = try String(contentsOf: gen, encoding: .utf8)
+    check(genText.contains("static let manifestSHA256 = \"\(sha)\""), "generated BuildIntegrity.swift embeds the manifest SHA-256")
+    // … and check the Swift side agrees with it.
+    let py = (try JSONSerialization.jsonObject(with: manifest) as! [String: Any])["files"] as! [String: String]
+    let sw = (try JSONSerialization.jsonObject(with: WebIntegrity.makeManifest(for: web)) as! [String: Any])["files"] as! [String: String]
+    eq(py, sw, "bundle-web.sh manifest == Swift manifest (\(py.count) files)")
+    check(py["index.html"] != nil && py.keys.contains { $0.hasPrefix("js/") }, "manifest lists index.html and js/…")
+    func verify(_ expected: String = sha) -> WebIntegrity.Report { WebIntegrity.verify(webDir: web, manifestURL: manifestURL, expectedManifestSHA256: expected) }
+    let t0 = Date()
+    check(verify().ok, "untouched bundle verifies")
+    let ms = Date().timeIntervalSince(t0) * 1000
+    check(ms < 50, "verification < 50 ms", String(format: "%.1f ms", ms))
+    print(String(format: "    verify took %.1f ms", ms))
+
+    let idx = web.appendingPathComponent("index.html")
+    let orig = try Data(contentsOf: idx)
+    try (orig + Data("<!-- x -->".utf8)).write(to: idx)
+    eq(verify().tampered, ["index.html"], "tampered file reported")
+    check(!verify().ok, "tampered → not ok")
+    try orig.write(to: idx)
+    try Data("x".utf8).write(to: web.appendingPathComponent("js/extra.js"))
+    eq(verify().extra, ["js/extra.js"], "extra file reported")
+    try fm.removeItem(at: web.appendingPathComponent("js/extra.js"))
+    try Data().write(to: web.appendingPathComponent(".DS_Store"))
+    check(verify().ok, ".DS_Store ignored")
+    try fm.createSymbolicLink(at: web.appendingPathComponent("link.js"), withDestinationURL: idx)
+    eq(verify().extra, ["link.js"], "symlink reported as unexpected")
+    try fm.removeItem(at: web.appendingPathComponent("link.js"))
+    let app = web.appendingPathComponent("app.js"); let appData = try Data(contentsOf: app)
+    try fm.removeItem(at: app)
+    eq(verify().missing, ["app.js"], "missing file reported")
+    try appData.write(to: app)
+    check(!verify(String(repeating: "a", count: 64)).manifestOK, "wrong compiled hash → manifest mismatch")
+    check(verify("").ok == false, "empty compiled hash rejected")
+    var edited = String(decoding: manifest, as: UTF8.self)
+    edited = edited.replacingOccurrences(of: py["index.html"]!, with: WebIntegrity.sha256Hex(Data("evil".utf8)))
+    try Data(edited.utf8).write(to: manifestURL)
+    check(!verify().manifestOK, "edited manifest (to match a tampered file) → manifest mismatch")
+    try manifest.write(to: manifestURL)
+    try fm.removeItem(at: manifestURL)
+    check(verify().error != nil, "missing manifest reported")
+} catch { check(false, "integrity tests threw \(error)") }
+
+section("Bridge v1.2 additions: validators, settings, keyslot policy")
+do {
+    eq(try Validate.bool(NSNumber(value: true), "b"), true, "bool true")
+    check((try? Validate.bool(NSNumber(value: 1), "b")) == nil, "number 1 is not a bool")
+    check((try? Validate.bool("true", "b")) == nil, "string is not a bool")
+    eq(try Validate.optBool(nil, "b"), false, "optBool absent → false")
+    eq(try Validate.optBool(NSNull(), "b", default: true), true, "optBool null → default")
+    check((try? Validate.optBool("yes", "b")) == nil, "optBool rejects strings")
+
+    let st = try JSONDecoder().decode(Settings.self, from: Data("{}".utf8))
+    check(st.vaultAutoLockMinutes == 5 && !st.vaultBiometryOnly && !st.vaultLockOnHide, "vault settings defaults (5 min, false, false)")
+    let st2 = try JSONDecoder().decode(Settings.self, from: Data(#"{"vaultAutoLockMinutes":2,"vaultBiometryOnly":true,"vaultLockOnHide":true}"#.utf8))
+    let st2obj = try JSONSerialization.jsonObject(with: JSONEncoder().encode(st2)) as! [String: Any]
+    check(st2obj["vaultAutoLockMinutes"] as? Int == 2 && st2obj["vaultBiometryOnly"] as? Bool == true && st2obj["vaultLockOnHide"] as? Bool == true,
+          "vault settings round trip")
+
+    let key = P256.KeyAgreement.PrivateKey()
+    var slot = try VaultCrypto.wrapForSecureEnclave(vdk: VaultCrypto.randomBytes(32), sePublicKey: key.publicKey,
+                                                    slotId: UUID().uuidString.lowercased(), label: "Mac", device: "Mac")
+    slot.policy = "biometry-current-set"
+    let slotObj = try JSONSerialization.jsonObject(with: JSONEncoder().encode(slot)) as! [String: Any]
+    eq(slotObj["policy"] as? String, "biometry-current-set", "keyslot policy encoded")
+    eq(try JSONDecoder().decode(Keyslot.self, from: JSONEncoder().encode(slot)).policy, "biometry-current-set", "keyslot policy decoded")
+    slot.policy = nil
+    check((try JSONSerialization.jsonObject(with: JSONEncoder().encode(slot)) as! [String: Any])["policy"] == nil, "no policy → field omitted (vector slots unchanged)")
+} catch { check(false, "v1.2 tests threw \(error)") }
+
 print("\n\(passes) passed, \(failures) failed")
 exit(failures == 0 ? 0 : 1)

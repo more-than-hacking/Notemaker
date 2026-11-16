@@ -73,3 +73,22 @@ The app registers the `.notemaker` document type (UTI `com.mth.notemaker.transfe
 MIME `application/vnd.notemaker.transfer+json`, role Viewer, icon = app icon). Opening one sends `openTransfer`
 (queued until the page is ready). `files.save` is used to write transfer files (suggested name
 `Notemaker transfer YYYY-MM-DD.notemaker`).
+
+## v1.2 additions (macOS)
+| method | params | result | notes |
+|---|---|---|---|
+| `se.capabilities` | – | `{ touchID: bool, enrolled: bool }` | `enrolled` = Touch ID usable right now (lid closed / no fingers → false) |
+| `se.createSlot` | + `biometryOnly?: bool` (default false) | Keyslot + `policy` | `policy`: `"user-presence"` (Touch ID or Mac password) or `"biometry-current-set"` (Touch ID only) |
+| `clipboard.write` | + `concealed?: bool` | `{ ok: true }` | current-host-only (no Universal Clipboard) + `org.nspasteboard.ConcealedType`/`TransientType` markers |
+| `app.vaultState` | `{ unlocked: bool, autoLockMinutes?: 1…1440 }` | `{ ok: true }` | starts/stops the native system-idle check; call on unlock, lock and auto-lock setting changes |
+
+Events: `windowHidden { reason: "minimized" | "app-hidden" | "inactive" | "closed" }` (`inactive` = app in background > 30 s),
+`windowShown`, `lock { reason: "idle-system" }` (system idle ≥ autoLockMinutes while unlocked). The page decides whether
+`windowHidden` locks the vault (setting `vaultLockOnHide`).
+
+Error codes for `se.*`: `biometry-unavailable` (no Touch ID / nothing enrolled), `biometry-changed` (fingers added/removed →
+key permanently invalid → use the recovery key, then create a new slot), `biometry-lockout`, plus `cancelled`, `not-this-device`.
+Switching an existing vault's policy: `se.createSlot({ biometryOnly })` then `se.deleteSlot(old)`.
+
+Integrity: at launch the shell verifies `Resources/web-manifest.json` (SHA-256 of every bundled web file, itself pinned by a
+hash compiled into the binary) and refuses to load a modified UI (`--skip-integrity` for development only).

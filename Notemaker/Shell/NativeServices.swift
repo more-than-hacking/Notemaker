@@ -119,14 +119,26 @@ final class NativeServices: NSObject {
 
     // MARK: Clipboard
 
-    func writeClipboard(_ text: String, clearAfter seconds: Int?) {
-        let pb = NSPasteboard.general
+    static let concealedType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+    static let transientType = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
+
+    /// `concealed`: clipboard managers skip it (nspasteboard.org markers) and it never leaves this Mac
+    /// (current-host-only = no Universal Clipboard / Handoff).
+    func writeClipboard(_ text: String, clearAfter seconds: Int?, concealed: Bool = false, pasteboard: NSPasteboard = .general) {
+        let pb = pasteboard
         pb.clearContents()
-        pb.setString(text, forType: .string)
+        if concealed {
+            pb.prepareForNewContents(with: .currentHostOnly)
+            pb.setString(text, forType: .string)
+            pb.setData(Data(), forType: Self.concealedType)
+            pb.setData(Data(), forType: Self.transientType)
+        } else {
+            pb.setString(text, forType: .string)
+        }
         guard let seconds else { return }
         let count = pb.changeCount
         DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(seconds)) {
-            if NSPasteboard.general.changeCount == count { NSPasteboard.general.clearContents() }
+            if pb.changeCount == count { pb.clearContents() }
         }
     }
 

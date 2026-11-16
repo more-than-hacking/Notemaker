@@ -298,6 +298,10 @@ struct Settings: Codable, Equatable {
     var dayStart: String = "07:00"
     var dayEnd: String = "21:00"
     var lockHash: LockHash? = nil
+    // Vault (docs/VAULT_FORMAT.md, docs/DESKTOP_BRIDGE.md)
+    var vaultAutoLockMinutes: Int = 5
+    var vaultBiometryOnly: Bool = false
+    var vaultLockOnHide: Bool = false
     var extra: [String: JSONValue] = [:]
 
     init() {}
@@ -312,8 +316,12 @@ struct Settings: Codable, Equatable {
         dayStart = c.str("dayStart") ?? "07:00"
         dayEnd = c.str("dayEnd") ?? "21:00"
         lockHash = c.val("lockHash", LockHash.self)
+        vaultAutoLockMinutes = c.int("vaultAutoLockMinutes") ?? 5
+        vaultBiometryOnly = c.bool("vaultBiometryOnly") ?? false
+        vaultLockOnHide = c.bool("vaultLockOnHide") ?? false
         extra = c.extras(known: ["theme", "autoRollover", "focusMinutes", "breakMinutes", "reviewTime",
-                                 "weekStartsOn", "dayStart", "dayEnd", "lockHash"])
+                                 "weekStartsOn", "dayStart", "dayEnd", "lockHash",
+                                 "vaultAutoLockMinutes", "vaultBiometryOnly", "vaultLockOnHide"])
     }
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: AnyKey.self)
@@ -322,6 +330,8 @@ struct Settings: Codable, Equatable {
         try c.put("focusMinutes", focusMinutes); try c.put("breakMinutes", breakMinutes)
         try c.putOpt("reviewTime", reviewTime); try c.put("weekStartsOn", weekStartsOn)
         try c.put("dayStart", dayStart); try c.put("dayEnd", dayEnd); try c.putOpt("lockHash", lockHash)
+        try c.put("vaultAutoLockMinutes", vaultAutoLockMinutes)
+        try c.put("vaultBiometryOnly", vaultBiometryOnly); try c.put("vaultLockOnHide", vaultLockOnHide)
     }
 }
 

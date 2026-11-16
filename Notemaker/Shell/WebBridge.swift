@@ -22,7 +22,7 @@ final class WebBridge: NSObject, WKScriptMessageHandler {
     var onChrome: ((NSColor) -> Void)?
     var onStorageSaved: (() -> Void)?
     var onSelfTestDone: (([String: Any]) -> Void)?
-    var onSelfTestTrigger: ((String, String, @escaping (Bool) -> Void) -> Void)?
+    var onSelfTestTrigger: ((String, String, @escaping (Any) -> Void) -> Void)?
     var windowProvider: (() -> NSWindow?)?
 
     let services = NativeServices()
@@ -48,6 +48,47 @@ final class WebBridge: NSObject, WKScriptMessageHandler {
     }
 
     func pageWillReload() { pageReady = false }
+
+    // MARK: Vault idle lock (system-wide idle time, checked every 30 s only while the vault is unlocked)
+
+    private(set) var vaultUnlocked = false
+    private(set) var idleLockMinutes = 5
+    private var idleTimer: Timer?
+    private var idleLockSent = false
+    /// Test hook: overrides the measured system idle seconds.
+    var idleSecondsOverride: Double?
+
+    func setVaultState(unlocked: Bool, autoLockMinutes: Int) {
+        vaultUnlocked = unlocked
+        idleLockMinutes = autoLockMinutes
+        idleLockSent = false
+        if unlocked {
+            if idleTimer == nil {
+                let t = Timer(timeInterval: 30, target: self, selector: #selector(idleTick), userInfo: nil, repeats: true)
+                t.tolerance = 5
+                RunLoop.main.add(t, forMode: .common)
+                idleTimer = t
+            }
+        } else {
+            idleTimer?.invalidate(); idleTimer = nil
+        }
+    }
+
+    var idleTimerRunning: Bool { idleTimer != nil }
+
+    static func systemIdleSeconds() -> Double {
+        CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
+    }
+
+    @objc func idleTick() {
+        guard vaultUnlocked else { return }
+        let idle = idleSecondsOverride ?? Self.systemIdleSeconds()
+        if idle >= Double(idleLockMinutes * 60) {
+            if !idleLockSent { idleLockSent = true; send("lock", ["reason": "idle-system"]) }
+        } else {
+            idleLockSent = false
+        }
+    }
 
     // MARK: Origin check
 
@@ -139,6 +180,9 @@ final class WebBridge: NSObject, WKScriptMessageHandler {
                 done(.success(["ok": true]))
 
             // Secure Enclave
+            case "se.capabilities":
+                let c = SecureEnclaveKeys.capabilities()
+                done(.success(["touchID": c.touchID, "enrolled": c.enrolled]))
             case "se.available":
                 done(.success(["available": SecureEnclaveKeys.isAvailable, "device": SecureEnclaveKeys.deviceName]))
             case "se.createSlot":
@@ -146,7 +190,8 @@ final class WebBridge: NSObject, WKScriptMessageHandler {
                 let label = try Validate.string(p["label"], "label", max: 200)
                 let vdk = try Validate.base64(p["vdk"], "vdk", maxBytes: 32)
                 guard vdk.count == 32 else { throw BridgeError("vdk must be 32 bytes") }
-                let (slot, loc) = try SecureEnclaveKeys.createSlot(slotId: slotId, label: label, vdk: vdk)
+                let biometryOnly = try Validate.optBool(p["biometryOnly"], "biometryOnly")
+                let (slot, loc) = try SecureEnclaveKeys.createSlot(slotId: slotId, label: label, vdk: vdk, biometryOnly: biometryOnly)
                 if logCalls { print("bridge   se handle stored in: \(loc.rawValue)"); fflush(stdout) }
                 done(.success(try Self.jsonObject(slot)))
             case "se.unwrapSlot":
@@ -202,7 +247,8 @@ final class WebBridge: NSObject, WKScriptMessageHandler {
                 let text = try Validate.string(p["text"], "text", max: 1_000_000)
                 var clear: Int? = nil
                 if let v = p["clearAfterSeconds"], !(v is NSNull) { clear = try Validate.int(v, "clearAfterSeconds", range: 1...3600) }
-                services.writeClipboard(text, clearAfter: clear)
+                let concealed = try Validate.optBool(p["concealed"], "concealed")
+                services.writeClipboard(text, clearAfter: clear, concealed: concealed)
                 done(.success(["ok": true]))
             case "app.setBadge":
                 services.setBadge(try Validate.int(p["count"], "count", range: 0...999_999))
@@ -212,6 +258,12 @@ final class WebBridge: NSObject, WKScriptMessageHandler {
                 let phase = try Validate.optString(p["phase"], "phase", max: 10)
                 guard phase == nil || phase == "focus" || phase == "break" else { throw BridgeError("phase must be focus or break") }
                 services.setFocusTimer(label: label, phase: phase)
+                done(.success(["ok": true]))
+            case "app.vaultState":
+                let unlocked = try Validate.bool(p["unlocked"], "unlocked")
+                var minutes = idleLockMinutes
+                if let v = p["autoLockMinutes"], !(v is NSNull) { minutes = try Validate.int(v, "autoLockMinutes", range: 1...1440) }
+                setVaultState(unlocked: unlocked, autoLockMinutes: minutes)
                 done(.success(["ok": true]))
             case "app.openExternal":
                 let s = try Validate.string(p["url"], "url", max: 4000)
@@ -231,7 +283,7 @@ final class WebBridge: NSObject, WKScriptMessageHandler {
                 guard selfTestMode, let trigger = onSelfTestTrigger else { throw BridgeError("unknown method") }
                 let action = try Validate.string(p["action"], "action", max: 40)
                 let arg = try Validate.string(p["arg"] ?? "", "arg", max: 100_000)
-                trigger(action, arg) { ok in done(.success(["ok": ok])) }
+                trigger(action, arg) { r in done(.success((r as? [String: Any]) ?? ["ok": (r as? Bool) ?? false])) }
             case "selftest.done":
                 guard selfTestMode else { throw BridgeError("unknown method") }
                 onSelfTestDone?(p)

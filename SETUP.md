@@ -28,15 +28,26 @@ tools/         swiftc-env.sh — shared swiftc setup (SDK, module cache, SwiftBr
 ## Build & run
 
 ```bash
-./build.sh                       # → build_output/Notemaker.app (ad-hoc signed), web UI copied into Resources/web
+./build.sh                       # → build_output/Notemaker.app, universal (arm64 + x86_64), ad-hoc signed
+./build.sh --native-only         # only this Mac's architecture (fast dev build)
 ./build.sh --debug               # unoptimised
 build_output/Notemaker.app/Contents/MacOS/Notemaker --bridge-log       # print bridge calls + page JS errors
 build_output/Notemaker.app/Contents/MacOS/Notemaker --bridge-selftest  # automated bridge test (temp data folder), exits 0/1
+arch -x86_64 build_output/Notemaker.app/Contents/MacOS/Notemaker --bridge-selftest   # same, Intel slice under Rosetta
+build_output/Notemaker.app/Contents/MacOS/Notemaker --skip-integrity   # dev only: skip the web-file integrity check
 defaults write com.mth.notemaker NotemakerWebInspector -bool YES      # enable Safari Web Inspector for the page
 ```
 
 `build.sh` uses `xcodebuild` when full Xcode is installed (the project has a "Bundle web UI" script phase),
 otherwise `swiftc` from the Command Line Tools.
+
+## Integrity check (free substitute for notarization)
+
+`tools/bundle-web.sh` copies the web UI into `Contents/Resources/web/`, writes `Resources/web-manifest.json`
+(SHA-256 of every file) and generates `BuildIntegrity.swift`, which compiles the manifest's own SHA-256 into the
+binary. At launch, before the page loads, the app checks that every file matches and that none are missing or
+extra (`Notemaker/Core/WebIntegrity.swift`, ~20 ms). If anything differs it refuses to open. Any edit to the web
+files therefore needs a rebuild (`./build.sh`).
 
 ## Tests
 

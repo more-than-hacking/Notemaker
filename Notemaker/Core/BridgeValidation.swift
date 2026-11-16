@@ -33,6 +33,15 @@ enum Validate {
         guard Double(i) == n.doubleValue, range.contains(i) else { throw BridgeError("\(name) is out of range") }
         return i
     }
+    static func bool(_ v: Any?, _ name: String) throws -> Bool {
+        guard let n = v as? NSNumber, CFGetTypeID(n) == CFBooleanGetTypeID() else { throw BridgeError("\(name) must be true or false") }
+        return n.boolValue
+    }
+    /// Absent / null → `default`.
+    static func optBool(_ v: Any?, _ name: String, default d: Bool = false) throws -> Bool {
+        if v == nil || v is NSNull { return d }
+        return try bool(v, name)
+    }
     static func dict(_ v: Any?, _ name: String) throws -> [String: Any] {
         guard let d = v as? [String: Any] else { throw BridgeError("\(name) must be an object") }
         return d

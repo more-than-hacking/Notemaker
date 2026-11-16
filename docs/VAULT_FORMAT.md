@@ -89,4 +89,5 @@ them in `vault.blobs` (base64). Deleting an item deletes its blob.
 - Vault content never appears in global search, backlinks, Markdown export, insights or the command palette
   (the palette may only offer "Open vault" / "Lock vault").
 - Changing items: re-encrypt the item with a fresh IV every save. Rotating isn't required for v1.
-- `settings` gains `"vaultAutoLockMinutes": 5`.
+- `settings` gains `"vaultAutoLockMinutes": 5`, `"vaultBiometryOnly": false` (macOS: Touch ID only, no Mac-password fallback) and `"vaultLockOnHide": false`.
+- `secure-enclave` keyslots may carry `"policy": "user-presence" | "biometry-current-set"`; absent = `"user-presence"`.

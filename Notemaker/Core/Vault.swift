@@ -26,10 +26,12 @@ struct Keyslot: Codable, Equatable, Identifiable, Sendable {
     var credentialId: String? = nil
     var rpId: String? = nil
     var prfSalt: String? = nil
+    /// secure-enclave only: "user-presence" (Touch ID or password) | "biometry-current-set" (Touch ID only).
+    var policy: String? = nil
     var extra: [String: JSONValue] = [:]
 
     static let known: Set<String> = ["id", "type", "label", "createdAt", "iv", "ct", "salt", "ephemeralPublicKey",
-                                     "publicKey", "device", "credentialId", "rpId", "prfSalt"]
+                                     "publicKey", "device", "credentialId", "rpId", "prfSalt", "policy"]
 
     init(id: String, type: String, label: String, createdAt: String = ISO.string(), iv: String, ct: String) {
         self.id = id; self.type = type; self.label = label; self.createdAt = createdAt; self.iv = iv; self.ct = ct
@@ -42,7 +44,7 @@ struct Keyslot: Codable, Equatable, Identifiable, Sendable {
         createdAt = c.str("createdAt") ?? ISO.string()
         iv = c.str("iv") ?? ""; ct = c.str("ct") ?? ""
         salt = c.str("salt"); ephemeralPublicKey = c.str("ephemeralPublicKey"); publicKey = c.str("publicKey")
-        device = c.str("device"); credentialId = c.str("credentialId"); rpId = c.str("rpId"); prfSalt = c.str("prfSalt")
+        device = c.str("device"); credentialId = c.str("credentialId"); rpId = c.str("rpId"); prfSalt = c.str("prfSalt"); policy = c.str("policy")
         extra = c.extras(known: Self.known)
     }
     func encode(to encoder: Encoder) throws {
@@ -51,7 +53,7 @@ struct Keyslot: Codable, Equatable, Identifiable, Sendable {
         try c.put("id", id); try c.put("type", type); try c.put("label", label); try c.put("createdAt", createdAt)
         try c.put("iv", iv); try c.put("ct", ct)
         for (k, v) in [("salt", salt), ("ephemeralPublicKey", ephemeralPublicKey), ("publicKey", publicKey), ("device", device),
-                       ("credentialId", credentialId), ("rpId", rpId), ("prfSalt", prfSalt)] {
+                       ("credentialId", credentialId), ("rpId", rpId), ("prfSalt", prfSalt), ("policy", policy)] {
             if let v { try c.put(k, v) }
         }
     }

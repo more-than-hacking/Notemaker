@@ -9,7 +9,8 @@
 # (index.html, app.js, styles.css, js/, web-icons/, manifest.webmanifest) are copied to Contents/Resources/web.
 #
 # Output: build_output/Notemaker.app (ad-hoc signed)
-#   ./build.sh            release build
+#   ./build.sh            release build, universal (arm64 + x86_64)
+#   ./build.sh --native-only   only this Mac's architecture (faster dev builds)
 #   ./build.sh --debug    unoptimised build (faster to compile)
 #   ./build.sh --swiftc   force the swiftc path even if Xcode is installed
 set -e
@@ -21,36 +22,55 @@ APP="$OUT_DIR/$APP_NAME.app"
 VERSION="2.1.0"
 BUILD_NUMBER="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)"
 
-OPT="-O"; FORCE_SWIFTC=0
+OPT="-O"; FORCE_SWIFTC=0; ARCHS="arm64 x86_64"
 for a in "$@"; do
   case "$a" in
     --debug) OPT="-Onone" ;;
     --swiftc) FORCE_SWIFTC=1 ;;
+    --native-only) ARCHS="$(uname -m)" ;;
   esac
 done
 
-echo "Building $APP_NAME $VERSION…"
+echo "Building $APP_NAME $VERSION ($ARCHS)…"
 rm -rf "$APP"
 mkdir -p "$OUT_DIR"
+RES="$APP/Contents/Resources"
 
 has_xcode() { xcodebuild -version >/dev/null 2>&1; }
 
 if [ $FORCE_SWIFTC -eq 0 ] && has_xcode; then
   echo "→ Full Xcode found: using xcodebuild"
-  xcodebuild -project "$APP_NAME.xcodeproj" -target "$APP_NAME" -configuration Release \
+  # The project's script phases bundle the web UI and generate BuildIntegrity.swift (tools/bundle-web.sh).
+  xcodebuild -project "$APP_NAME.xcodeproj" -target "$APP_NAME" -configuration Release ARCHS="$ARCHS" ONLY_ACTIVE_ARCH=NO \
              SYMROOT="$ROOT/build/xcode" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="-" DEVELOPMENT_TEAM="" build
   cp -R "$ROOT/build/xcode/Release/$APP_NAME.app" "$APP"
-  # The asset catalog provides the icon; also ship the .icns used by the swiftc build.
-  cp "$ROOT/assets/Notemaker.icns" "$APP/Contents/Resources/Notemaker.icns"
 else
   echo "→ Using swiftc (Command Line Tools)"
   source "$ROOT/tools/swiftc-env.sh"
-  mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-  SOURCES=$(find "$ROOT/Notemaker/Core" "$ROOT/Notemaker/Shell" -name '*.swift' | sort)
-  # shellcheck disable=SC2086
-  nm_swiftc -parse-as-library $OPT -module-name "$APP_NAME" $SOURCES -o "$APP/Contents/MacOS/$APP_NAME"
+  mkdir -p "$APP/Contents/MacOS" "$RES"
 
-  cp "$ROOT/assets/Notemaker.icns" "$APP/Contents/Resources/Notemaker.icns"
+  # 1. Web UI + integrity manifest first: its hash is compiled into the binary.
+  GEN="$ROOT/build/generated/BuildIntegrity.swift"
+  "$ROOT/tools/bundle-web.sh" "$RES" "$GEN"
+
+  # 2. Compile each architecture, then merge into a universal binary.
+  SOURCES=$(find "$ROOT/Notemaker/Core" "$ROOT/Notemaker/Shell" -name '*.swift' | sort)
+  SLICES=()
+  for arch in $ARCHS; do
+    echo "→ Compiling $arch"
+    mkdir -p "$ROOT/build/arch/$arch"
+    # shellcheck disable=SC2086
+    NM_TARGET="$arch-apple-macos14" nm_swiftc -parse-as-library $OPT -module-name "$APP_NAME" $SOURCES "$GEN" \
+      -o "$ROOT/build/arch/$arch/$APP_NAME"
+    SLICES+=("$ROOT/build/arch/$arch/$APP_NAME")
+  done
+  if [ ${#SLICES[@]} -gt 1 ]; then
+    lipo -create "${SLICES[@]}" -output "$APP/Contents/MacOS/$APP_NAME"
+  else
+    cp "${SLICES[0]}" "$APP/Contents/MacOS/$APP_NAME"
+  fi
+  echo "→ $(lipo -info "$APP/Contents/MacOS/$APP_NAME" | sed 's/.*: //')"
+
   cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -78,20 +98,14 @@ PLIST
   # URL scheme + .notemaker document type / UTI come from Notemaker/Info.plist (also used by Xcode).
   /usr/libexec/PlistBuddy -c "Merge $ROOT/Notemaker/Info.plist" "$APP/Contents/Info.plist" >/dev/null
   plutil -lint "$APP/Contents/Info.plist" >/dev/null
+  # URL scheme + .notemaker document type / UTI come from Notemaker/Info.plist (also used by Xcode).
+  /usr/libexec/PlistBuddy -c "Merge $ROOT/Notemaker/Info.plist" "$APP/Contents/Info.plist" >/dev/null
+  plutil -lint "$APP/Contents/Info.plist" >/dev/null
   printf 'APPL????' > "$APP/Contents/PkgInfo"
 fi
 
-echo "→ Bundling web UI"
-RES="$APP/Contents/Resources"
-rm -rf "$RES/web" "$RES/selftest"
-mkdir -p "$RES/web" "$RES/selftest"
-for f in index.html app.js styles.css manifest.webmanifest; do
-  [ -f "$ROOT/$f" ] && cp "$ROOT/$f" "$RES/web/"
-done
-for d in js web-icons; do
-  [ -d "$ROOT/$d" ] && cp -R "$ROOT/$d" "$RES/web/"
-done
-[ -f "$RES/web/index.html" ] || { echo "❌ index.html missing"; exit 1; }
+# Outside web/ (not covered by the manifest): the self-test page and the icon.
+mkdir -p "$RES/selftest"
 cp "$ROOT/Notemaker/Shell/selftest/selftest.html" "$RES/selftest/"
 cp "$ROOT/assets/Notemaker.icns" "$RES/Notemaker.icns"
 
