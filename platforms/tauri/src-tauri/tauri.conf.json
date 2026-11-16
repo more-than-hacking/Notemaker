@@ -1,0 +1,79 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Notemaker",
+  "mainBinaryName": "notemaker",
+  "version": "2.1.0",
+  "identifier": "com.mth.notemaker",
+  "build": {
+    "frontendDist": "../dist",
+    "beforeBuildCommand": { "script": "node scripts/prepare-web.mjs", "cwd": ".." },
+    "beforeDevCommand": { "script": "node scripts/prepare-web.mjs", "cwd": ".." }
+  },
+  "app": {
+    "windows": [],
+    "withGlobalTauri": false,
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: blob:",
+        "media-src": "'self' blob:",
+        "font-src": "'self' data:",
+        "connect-src": "ipc: http://ipc.localhost",
+        "frame-src": "'self' blob: data:",
+        "worker-src": "'none'",
+        "object-src": "'none'",
+        "base-uri": "'none'",
+        "form-action": "'none'"
+      },
+      "freezePrototype": false,
+      "capabilities": ["default"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "rpm", "appimage", "msi", "nsis"],
+    "publisher": "Notemaker contributors",
+    "copyright": "Copyright © 2025–2026 Notemaker contributors. MIT License.",
+    "license": "MIT",
+    "homepage": "https://github.com/more-than-hacking/Notemaker",
+    "category": "Productivity",
+    "shortDescription": "Daily tasks, notes, habits and a hardware-protected vault",
+    "longDescription": "Notemaker: daily tasks, Markdown notes, habits, planner, focus timer and an encrypted vault protected by Windows Hello, a FIDO2 security key or the Android Keystore. Your data stays on your device.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["notemaker"],
+        "name": "Notemaker transfer",
+        "description": "Notemaker transfer file",
+        "mimeType": "application/vnd.notemaker.transfer+json",
+        "role": "Viewer"
+      }
+    ],
+    "linux": {
+      "deb": {
+        "desktopTemplate": "linux/notemaker.desktop",
+        "files": { "/usr/share/mime/packages/com.mth.notemaker.xml": "linux/com.mth.notemaker.xml" }
+      },
+      "rpm": {
+        "desktopTemplate": "linux/notemaker.desktop",
+        "files": { "/usr/share/mime/packages/com.mth.notemaker.xml": "linux/com.mth.notemaker.xml" }
+      },
+      "appimage": { "bundleMediaFramework": false }
+    },
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper" },
+      "nsis": { "installMode": "currentUser" }
+    },
+    "android": {
+      "minSdkVersion": 24
+    }
+  }
+}

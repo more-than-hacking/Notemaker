@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Registers the .notemaker transfer file type (docs/TRANSFER_FORMAT.md) with shared-mime-info. -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/vnd.notemaker.transfer+json">
+    <comment>Notemaker transfer file</comment>
+    <sub-class-of type="application/json"/>
+    <glob pattern="*.notemaker"/>
+    <icon name="notemaker"/>
+  </mime-type>
+</mime-info>

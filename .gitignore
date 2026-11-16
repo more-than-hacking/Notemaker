@@ -2,3 +2,14 @@
 build_output/
 *.dmg
 build/
+
+# Tauri shell (Windows / Linux / Android) build outputs
+platforms/tauri/dist/
+platforms/tauri/node_modules/
+platforms/tauri/out/
+platforms/tauri/src-tauri/target/
+platforms/tauri/src-tauri/gen/schemas/
+# signing keys never go into the repo
+*.jks
+*.keystore
+keystore.properties

@@ -1,0 +1,7 @@
+{
+  "identifier": "default",
+  "description": "The bundled web UI may call exactly one command: bridge (validated in Rust). No plugin commands are exposed to the page; plugins are used from Rust only.",
+  "windows": ["main"],
+  "local": true,
+  "permissions": ["allow-bridge"]
+}

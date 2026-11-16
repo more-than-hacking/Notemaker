@@ -1,0 +1,14 @@
+{
+  "name": "notemaker-tauri",
+  "private": true,
+  "version": "2.1.0",
+  "description": "Notemaker for Windows, Linux and Android (Tauri 2 shell around the web UI at the repo root)",
+  "license": "MIT",
+  "scripts": {
+    "prepare-web": "node scripts/prepare-web.mjs",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4"
+  }
+}
