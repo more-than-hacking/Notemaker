@@ -112,8 +112,9 @@
 
     // ---------------- PWA ----------------
     function registerServiceWorker() {
-        // only over http(s); file:// pages keep working without it
-        if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
+        // only for the web app over http(s): file:// pages keep working without it, and the native apps (which may load
+        // from https://tauri.localhost) bundle their files themselves
+        if (window.NotemakerNative || !('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('sw.js').catch((err) => console.warn('Service worker registration failed', err));
         });
@@ -136,7 +137,7 @@
             const badge = NC.remainingCount(S.doc, C.localToday(), C);
             if (badge !== lastBadge) {
                 lastBadge = badge;
-                NM.native.request('app.setBadge', { count: badge }).catch(() => { /* */ });
+                if (!NM.caps || NM.caps.badge !== false) NM.native.request('app.setBadge', { count: badge }).catch(() => { /* */ });
             }
         };
         if (now) run(); else syncTimer = setTimeout(run, 800);
@@ -173,7 +174,27 @@
         nat.request('notify.permission').then((r) => { S.nativeNotify = (r && r.status) || 'default'; }).catch(() => { /* */ });
     }
 
+    /** app.capabilities (Windows / Linux / Android shells; macOS and older shells fall back to defaults). */
+    async function loadCapabilities() {
+        if (!NM.native) { NM.caps = null; return; }
+        const base = NC.defaultCapabilities(NM.native.platform || 'macos');
+        let r = null;
+        try { r = await NM.native.request('app.capabilities'); } catch (e) { r = null; }
+        NM.caps = Object.assign(base, r && typeof r === 'object' ? r : {});
+    }
+    /** Ctrl instead of ⌘ outside Apple devices; a touch layout without shortcut hints on phones. */
+    function applyPlatformUi() {
+        if (!NM.isMacLike()) {
+            $$('kbd').forEach((k) => { if (k.textContent.includes('⌘')) k.textContent = k.textContent.replace(/⌘/g, 'Ctrl '); });
+            $$('[title*="⌘"]').forEach((el) => { el.title = el.title.replace(/⌘⇧/g, 'Ctrl+Shift+').replace(/⌘/g, 'Ctrl+'); });
+        }
+        if (NM.native && NM.native.isMobile) document.documentElement.classList.add('touch-ui');
+        if (NM.native) document.documentElement.dataset.platform = NM.native.platform || 'macos';
+    }
+
     async function start() {
+        await loadCapabilities();
+        applyPlatformUi();
         await NM.load();
         S.today = C.localToday();
         S.date = S.today;

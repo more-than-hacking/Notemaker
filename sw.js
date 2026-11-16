@@ -1,6 +1,6 @@
 /* Notemaker service worker — cache-first app shell so the app works offline.
    Bump CACHE when shipping changes to any file below. */
-const CACHE = 'notemaker-shell-v2.4.0';
+const CACHE = 'notemaker-shell-v2.5.0';
 const SHELL = [
     './', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest',
     'js/vault-core.js', 'js/transfer-core.js', 'js/native.js', 'js/vault-store.js', 'js/ui-vault.js', 'js/ui-transfer.js', 'js/storage-core.js', 'js/ui-storage.js',

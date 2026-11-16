@@ -7,6 +7,9 @@
     NM.VERSION = '2.2.0';
     const WELCOMED = 'notemaker_welcomed';
     const kit = () => NM.vault.kit;
+    const plat = () => (NM.native ? (NM.native.platform || 'macos') : 'web');
+    /** Device words (Mac / PC / phone / computer / browser) — js/native.js hwTerms. */
+    const W = () => window.NotemakerNativeClient.hwTerms(plat());
     const isNative = () => !!NM.native;
     const plural = (n, one, many) => n + ' ' + (n === 1 ? one : (many || one + 's'));
 
@@ -70,7 +73,10 @@
         return { input, el: h('div', { class: 'rk-field' }, input, mark) };
     }
     async function deviceName() {
-        if (isNative()) { try { const r = await NM.native.request('se.available'); if (r && r.device) return r.device; } catch (e) { /* */ } return 'Mac'; }
+        if (isNative()) {
+            try { const r = await window.NotemakerNativeClient.hwVault.available(NM.native); if (r && r.device) return r.device; } catch (e) { /* */ }
+            return { macos: 'Mac', windows: 'Windows PC', linux: 'Linux computer', android: 'Android phone' }[plat()] || 'Computer';
+        }
         const ua = navigator.userAgent;
         const b = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
         const p = /Mac/.test(ua) ? 'macOS' : /Windows/.test(ua) ? 'Windows' : /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Linux/.test(ua) ? 'Linux' : '';
@@ -123,7 +129,7 @@
                 tile('upload'),
                 title(B ? 'Save a backup' : 'Move to a new device'),
                 lead(B ? 'Everything goes into one encrypted file you keep somewhere safe. To restore it — here or on a new device — you’ll need the code shown next.'
-                    : 'Everything on this ' + (isNative() ? 'Mac' : 'browser') + ' goes into one encrypted file. You’ll open it on your new device with a one-time code.'),
+                    : 'Everything on ' + W().here + ' goes into one encrypted file. You’ll open it on your new device with a one-time code.'),
                 rows([
                     { label: 'Tasks', value: String(d.tasks.length) },
                     { label: 'Notes', value: notes.length + (locked ? ' (' + locked + ' private)' : '') },
@@ -151,12 +157,12 @@
         function hardwareOnlyScreen(msg) {
             sh.show(screen(
                 tile('lock'),
-                title('Your vault is tied to this ' + (isNative() ? 'Mac' : 'browser')),
-                lead('Right now only ' + (isNative() ? 'Touch ID on this Mac' : 'your passkey') + ' can open it. To take it with you, create a recovery key — you’ll type it once on the new device.'),
+                title('Your vault is tied to ' + W().here),
+                lead('Right now only ' + (isNative() ? W().use + (W().portable ? '' : ' on ' + W().here) : 'your passkey') + ' can open it. To take it with you, create a recovery key — you’ll type it once on the new device.'),
                 msg ? note(msg.text, msg.kind) : null,
                 primary('Create a recovery key and move it', async (e) => {
                     const btn = e.currentTarget;
-                    btn.disabled = true; btn.textContent = 'Waiting for ' + (isNative() ? 'Touch ID' : 'your passkey') + '…';
+                    btn.disabled = true; btn.textContent = 'Waiting for ' + W().waiting + '…';
                     let raw = null;
                     try {
                         if (NM.vault.isUnlocked()) raw = await kit().obtainRawVdk('Creating a recovery key');
@@ -170,7 +176,7 @@
                     } finally { if (raw) raw.fill(0); }
                 }),
                 link('Move without the vault', async () => {
-                    const ok = await NM.confirm('Your vault (' + plural(S.doc.vault.items.length, 'item') + ') won’t be on the new device. It stays here on this ' + (isNative() ? 'Mac' : 'browser') + '.', 'Move without it');
+                    const ok = await NM.confirm('Your vault (' + plural(S.doc.vault.items.length, 'item') + ') won’t be on the new device. It stays here on ' + W().here + '.', 'Move without it');
                     if (ok) { st.omitVault = true; build(); }
                 })));
         }
@@ -194,9 +200,9 @@
             const hasRec = kit().hasRecovery();
             const parts = [tile('lock'), title(o.heading), lead(o.text)];
             if (canHw && !showRecovery) {
-                parts.push(primary(isNative() ? 'Unlock with Touch ID' : 'Unlock with passkey', async (e) => {
+                parts.push(primary(W().unlock, async (e) => {
                     const btn = e.currentTarget;
-                    btn.disabled = true; btn.textContent = 'Waiting for ' + (isNative() ? 'Touch ID' : 'your passkey') + '…';
+                    btn.disabled = true; btn.textContent = 'Waiting for ' + W().waiting + '…';
                     try { const r = await kit().hwUnlock(); await kit().openSession(r.raw); o.after(); } catch (err) {
                         unlockScreen(o, { text: err.code === 'cancelled' ? 'That was cancelled — try again when you’re ready.' : err.message, kind: err.code === 'cancelled' ? 'muted' : 'warn' }, err.code === 'not-this-device');
                     }
@@ -212,7 +218,7 @@
                 rk.input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !go.disabled) go.click(); });
                 parts.push(h('label', { class: 'field v-field' }, h('span', { class: 'field-label' }, 'Recovery key'), rk.el), go);
                 if (msg) parts.push(note(msg.text, msg.kind));
-                if (canHw) parts.push(link('Use ' + (isNative() ? 'Touch ID' : 'your passkey') + ' instead', () => unlockScreen(o, null, false)));
+                if (canHw) parts.push(link('Use ' + W().use + ' instead', () => unlockScreen(o, null, false)));
             } else {
                 parts.push(note('This vault can only be opened on the device that created it.', 'warn'));
             }
@@ -243,7 +249,7 @@
                 const estimate = Object.values(blobs).reduce((s, b) => s + b.ct.length, 0) + JSON.stringify(S.doc).length;
                 if (estimate > T.MAX_BYTES) throw Object.assign(new Error('Your data is over 1 GB, which is too large for one transfer file. Remove some large vault files and try again.'), { code: 'too-large' });
                 if (estimate > T.WARN_BYTES && !(await NM.confirm('This transfer file will be about ' + T.formatBytes(estimate) + '. Copying it can take a while. Continue?', 'Continue'))) { summaryScreen(); return; }
-                const built = await T.buildTransferFile({ doc, prefs: prefsNow(), source: { app: isNative() ? 'macos' : 'web', appVersion: NM.VERSION, device: await deviceName() } });
+                const built = await T.buildTransferFile({ doc, prefs: prefsNow(), source: { app: plat(), appVersion: NM.VERSION, device: await deviceName() } });
                 st.fileText = built.fileText;
                 st.code = built.code.text;
                 built.code.bytes.fill(0);
@@ -325,7 +331,7 @@
         function sourceLine() {
             const e = st.envelope;
             const when = e.createdAt ? new Date(e.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'unknown date';
-            return (e.source.device || (e.source.app === 'macos' ? 'a Mac' : 'a browser')) + ' · ' + when;
+            return (e.source.device || ({ macos: 'a Mac', windows: 'a Windows PC', linux: 'a Linux computer', android: 'an Android phone' }[e.source.app] || 'a browser')) + ' · ' + when;
         }
         function summaryText() {
             const s = st.envelope.summary;
@@ -440,7 +446,7 @@
         function finishVaultScreen(msg, showRecovery) {
             const native = isNative();
             const parts = [tile('lock'), title('Finish moving your vault'),
-                lead('Unlock it once with your recovery key. Then you can use ' + (native ? 'Touch ID on this Mac' : 'a passkey in this browser') + ' instead.')];
+                lead('Unlock it once with your recovery key. Then you can use ' + (native ? W().use + (W().portable ? '' : ' on ' + W().here) : 'a passkey in this browser') + ' instead.')];
             const hasPasskeyHere = !native && kit().usableHere();
             const afterUnlock = async (rawCopy) => {
                 const sup = await kit().ensureSupport();
@@ -474,15 +480,15 @@
         function addDeviceScreen(raw) {
             let consumed = false;
             sh.setGuard(async () => { if (!consumed && raw) raw.fill(0); return true; });
-            const add = primary(isNative() ? 'Add this Mac' : 'Add this browser', async () => {
-                add.disabled = true; add.textContent = 'Waiting for ' + (isNative() ? 'Touch ID' : 'your passkey') + '…';
+            const add = primary(W().add, async () => {
+                add.disabled = true; add.textContent = 'Waiting for ' + W().waiting + '…';
                 try { await kit().addHardwareSlot(raw); consumed = true; raw.fill(0); finishedVault(true); } catch (err) {
-                    add.disabled = false; add.textContent = isNative() ? 'Add this Mac' : 'Add this browser';
+                    add.disabled = false; add.textContent = W().add;
                     NM.toast(err.code === 'cancelled' ? 'That was cancelled — try again when you’re ready.' : err.message, err.code === 'cancelled' ? '' : 'error', 6000);
                 }
             });
-            sh.show(screen(tile('key'), title(isNative() ? 'Use Touch ID next time?' : 'Use a passkey next time?'),
-                lead('Your vault is open. Add ' + (isNative() ? 'this Mac' : 'this browser') + ' so you won’t need the recovery key again.'),
+            sh.show(screen(tile('key'), title(W().next),
+                lead('Your vault is open. ' + (W().portable ? 'Add your security key' : 'Add ' + W().here) + ' so you won’t need the recovery key again.'),
                 add, link('Not now', () => { raw.fill(0); consumed = true; finishedVault(false); }, 'muted')));
         }
         function finishedVault(added) {
@@ -490,7 +496,7 @@
             sh.close();
             st.payload = null;
             NM.setView('vault');
-            NM.toast(added ? 'Your vault is ready on ' + (isNative() ? 'this Mac' : 'this browser') + '.' : 'Your vault is open.', 'ok', 5000, { label: 'Undo restore', fn: undo });
+            NM.toast(added ? 'Your vault is ready on ' + W().here + '.' : 'Your vault is open.', 'ok', 5000, { label: 'Undo restore', fn: undo });
         }
 
         if (opts.file) loadFile(opts.file);

@@ -60,7 +60,7 @@
         loadedStamp = n ? n.updatedAt : null;
         isEditing = false;
         editor.value = textOf(loadedDate);
-        $('#notesPreviewContent').innerHTML = C.markdownToHtml(editor.value) || '<p class="muted empty-note">No note for this day yet. Click <b>Edit</b> to start writing.</p>';
+        $('#notesPreviewContent').innerHTML = NM.renderMarkdown(editor.value) || '<p class="muted empty-note">No note for this day yet. Click <b>Edit</b> to start writing.</p>';
         $('#unlockInput').value = '';
         $('#unlockError').textContent = '';
         history = []; historyIndex = -1;
@@ -83,7 +83,7 @@
         await storeNote(loadedDate, editor.value);
         const n = note(loadedDate);
         loadedStamp = n ? n.updatedAt : null;
-        $('#notesPreviewContent').innerHTML = C.markdownToHtml(editor.value) || '<p class="muted empty-note">No note for this day yet. Click <b>Edit</b> to start writing.</p>';
+        $('#notesPreviewContent').innerHTML = NM.renderMarkdown(editor.value) || '<p class="muted empty-note">No note for this day yet. Click <b>Edit</b> to start writing.</p>';
         showMode();
         renderBacklinks();
     }
@@ -102,7 +102,7 @@
     });
 
     function updatePreview() {
-        preview.innerHTML = C.markdownToHtml(editor.value);
+        preview.innerHTML = NM.renderMarkdown(editor.value);
     }
 
     // ---------------- undo / redo (per editing session) ----------------

@@ -72,7 +72,7 @@ test('all 4 items decrypt to the expected payloads; blob decrypts and matches sh
     await assert.rejects(() => V.decryptBlob(key, 'other-id', vec.vault.blobs[file.blobId]));
 });
 
-test('normalizeVault keeps all three slot types, drops garbage, strips blobs', () => {
+test('normalizeVault keeps all slot types (unknown ones preserved), drops garbage, strips blobs', () => {
     const n = V.normalizeVault(vec.vault);
     assert.deepEqual(n.keyslots.map((s) => s.type), ['secure-enclave', 'passkey-prf', 'recovery']);
     assert.equal(n.items.length, 4);
@@ -80,10 +80,15 @@ test('normalizeVault keeps all three slot types, drops garbage, strips blobs', (
     assert.deepEqual(Object.keys(V.extractBlobs(vec.vault)), ['bbbbbbbb-0000-4000-8000-000000000001']);
     assert.equal(V.normalizeVault({ verifier: { iv: 'x', ct: 'y' }, keyslots: [] }), null);
     const hostile = JSON.parse(JSON.stringify(vec.vault));
-    hostile.keyslots.push({ id: 'evil', type: 'plaintext-key', key: 'AAAA', iv: 'AAAAAAAAAAAAAAAA', ct: 'AA==' });
+    hostile.keyslots.push({ id: 'future', type: 'future-key', extra: { nested: [1, 2] }, iv: 'AAAAAAAAAAAAAAAA', ct: 'AA==' }); // unknown type → preserved
+    hostile.keyslots.push({ id: 'evil', type: '<script>', iv: 'AAAAAAAAAAAAAAAA', ct: 'AA==' });                       // not a type name → dropped
+    hostile.keyslots.push({ id: 'big', type: 'huge-key', blob: 'x'.repeat(20000), iv: 'AAAAAAAAAAAAAAAA', ct: 'AA==' });  // over the size limit → dropped
+    hostile.keyslots.push({ id: 'noct', type: 'future-key', iv: 'AAAAAAAAAAAAAAAA' });                                 // missing common fields → dropped
     hostile.items.push({ id: '<img onerror=x>', iv: 'not base64!', ct: 'x' });
     const h = V.normalizeVault(hostile);
-    assert.equal(h.keyslots.length, 3);
+    assert.equal(h.keyslots.length, 4);
+    assert.deepEqual(h.keyslots[3].extra, { nested: [1, 2] });
+    assert.equal(h.keyslots[3].label, 'future-key');
     assert.equal(h.items.length, 4);
     assert.equal(V.normalizePayload({ type: 'login', title: { x: 1 }, password: 5, evil: '<script>' }).password, '5');
     assert.equal(V.normalizePayload({ type: 'weird' }).type, 'note');

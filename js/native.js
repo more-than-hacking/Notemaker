@@ -23,7 +23,7 @@
             (listeners[d.type] || []).slice().forEach((fn) => { try { fn(d); } catch (err) { if (win.console) win.console.error('native event handler', err); } });
         });
         return {
-            isDesktop: true, platform: nat.platform || 'macos', shellVersion: nat.shellVersion || '',
+            isDesktop: true, isMobile: !!nat.isMobile, platform: nat.platform || 'macos', shellVersion: nat.shellVersion || '',
             request(method, params) {
                 try { return Promise.resolve(nat.request(method, params || {})); } catch (e) { return Promise.reject(e); }
             },
@@ -139,33 +139,85 @@
     }
 
     // ---------------- Secure Enclave vault slots (desktop shell) ----------------
-    const SE_CODES = ['cancelled', 'not-this-device', 'biometry-changed', 'biometry-unavailable', 'biometry-lockout'];
+    const SE_CODES = ['cancelled', 'not-this-device', 'biometry-changed', 'biometry-unavailable', 'biometry-lockout',
+        'no-device', 'multiple-devices', 'timeout', 'pin-required', 'pin-invalid', 'pin-blocked'];
     function errCode(e) {
         const m = String((e && e.message) || e || '');
         const exact = SE_CODES.find((c) => m === c || m.indexOf(c) >= 0);
         if (exact) return exact;
         return /cancel/i.test(m) ? 'cancelled' : 'error';
     }
+    // ---------------- per-platform wording & hardware key kinds (docs/PLATFORMS.md) ----------------
+    /** platform: 'macos' | 'windows' | 'linux' | 'android' | 'web' → the words the vault UI uses for this device's key. */
+    function hwTerms(platform) {
+        switch (platform) {
+            case 'macos': return { platform, device: 'Mac', here: 'this Mac', Here: 'This Mac', method: 'Touch ID', use: 'Touch ID', unlock: 'Unlock with Touch ID',
+                setup: 'Set up with Touch ID', add: 'Add this Mac', waiting: 'Touch ID', retry: 'Try Touch ID again', keyName: 'Touch ID key', lose: 'this Mac',
+                opens: 'your fingerprint (Touch ID)', faster: 'Touch ID on this Mac.', cancelled: 'Touch ID was cancelled — try again when you’re ready.',
+                cantAdd: 'Touch ID keys can’t be added on this Mac.', next: 'Use Touch ID next time?', portable: false };
+            case 'windows': return { platform, device: 'PC', here: 'this PC', Here: 'This PC', method: 'Windows Hello', use: 'Windows Hello', unlock: 'Unlock with Windows Hello',
+                setup: 'Set up with Windows Hello', add: 'Add this PC', waiting: 'Windows Hello', retry: 'Try Windows Hello again', keyName: 'Windows Hello key', lose: 'this PC',
+                opens: 'Windows Hello (your face, fingerprint or PIN)', faster: 'Windows Hello on this PC.', cancelled: 'Windows Hello was cancelled — try again when you’re ready.',
+                cantAdd: 'Windows Hello isn’t set up on this PC.', next: 'Use Windows Hello next time?', portable: false };
+            case 'android': return { platform, device: 'phone', here: 'this phone', Here: 'This phone', method: 'your fingerprint or screen lock', use: 'your fingerprint', unlock: 'Unlock with fingerprint',
+                setup: 'Set up with fingerprint', add: 'Add this phone', waiting: 'your fingerprint', retry: 'Try your fingerprint again', keyName: 'phone key', lose: 'this phone',
+                opens: 'your fingerprint or screen lock', faster: 'your fingerprint on this phone.', cancelled: 'That was cancelled — try again when you’re ready.',
+                cantAdd: 'This phone has no screen lock or fingerprint set up.', next: 'Use your fingerprint next time?', portable: false };
+            case 'linux': return { platform, device: 'computer', here: 'this computer', Here: 'This computer', method: 'your security key', use: 'your security key', unlock: 'Unlock with security key',
+                setup: 'Set up with a security key', add: 'Add a security key', waiting: 'your security key — touch it now', retry: 'Try the security key again', keyName: 'security key', lose: 'your security key',
+                opens: 'your security key (a USB or NFC FIDO2 key)', faster: 'your security key.', cancelled: 'That was cancelled — try again when you’re ready.',
+                cantAdd: 'No security key is plugged in.', next: 'Use your security key next time?', portable: true };
+            default: return { platform: 'web', device: 'browser', here: 'this browser', Here: 'This browser', method: 'your passkey', use: 'your passkey', unlock: 'Unlock with passkey',
+                setup: 'Set up with a passkey', add: 'Add this browser', waiting: 'your passkey', retry: 'Try your passkey again', keyName: 'passkey', lose: 'this passkey',
+                opens: 'your passkey (Touch ID or security key)', faster: 'a passkey in this browser.', cancelled: 'The passkey prompt was closed — try again when you’re ready.',
+                cantAdd: 'Passkeys can’t be added on this page (needs https or localhost and a supported browser).', next: 'Use a passkey next time?', portable: false };
+        }
+    }
+    /** Keyslot type this platform's shell creates (macOS: Secure Enclave; Tauri shells: hw.* kinds). */
+    function hwSlotType(platform) {
+        return { macos: 'secure-enclave', windows: 'windows-hello', android: 'android-keystore', linux: 'fido2-hmac' }[platform] || null;
+    }
+    /** Defaults when an (older) shell doesn't implement app.capabilities. */
+    function defaultCapabilities(platform) {
+        const mac = platform === 'macos';
+        return { platform, storage: true, blobs: true, notify: true, notifyWhenClosed: mac || platform === 'android', badge: mac, tray: mac || platform === 'windows' || platform === 'linux',
+            menu: platform !== 'android', fileOpen: true, fileSave: true, clipboardClear: true, lockEvents: true, idleLock: mac,
+            hardwareKey: mac ? 'secure-enclave' : null, hardwareSlotType: hwSlotType(platform), hardwarePin: platform === 'linux' };
+    }
+
     /**
-     * What the unlock screen shows for a Secure Enclave error.
-     * policy: the slot's policy ("user-presence" default, or "biometry-current-set" = Touch ID only).
-     * → { reason, title, text, hardware (offer Touch ID again), recovery (offer the recovery key), replaceSlot }
+     * What the unlock screen shows for a hardware-key error.
+     * policy: the slot's policy ("user-presence" default, or "biometry-current-set" = Touch ID only, macOS).
+     * platform: 'macos' (default) | 'windows' | 'linux' | 'android'.
+     * → { reason, title, text, hardware (offer the hardware key again), recovery (offer the recovery key), replaceSlot }
      */
-    function seErrorScreen(code, policy) {
+    function seErrorScreen(code, policy, platform) {
         const touchOnly = policy === 'biometry-current-set';
+        const mac = !platform || platform === 'macos';
+        const t = hwTerms(mac ? 'macos' : platform);
         switch (code) {
-            case 'biometry-changed': return { reason: code, title: 'Your fingerprints changed',
+            case 'biometry-changed': return mac ? { reason: code, title: 'Your fingerprints changed',
                 text: 'Your fingerprints changed, so this Mac’s Touch ID key no longer works. Unlock with your recovery key, then set up Touch ID again.',
-                hardware: false, recovery: true, replaceSlot: true };
-            case 'biometry-unavailable': return { reason: code, title: 'Touch ID isn’t available',
+                hardware: false, recovery: true, replaceSlot: true }
+                : { reason: code, title: 'Your sign-in changed', text: 'Your fingerprints or sign-in changed, so ' + t.here + ' can’t open the vault with ' + t.use + ' anymore. Unlock with your recovery key, then set it up again.',
+                    hardware: false, recovery: true, replaceSlot: true };
+            case 'biometry-unavailable': return mac ? { reason: code, title: 'Touch ID isn’t available',
                 text: touchOnly ? 'Touch ID isn’t available right now (lid closed or no fingerprints). This vault only accepts Touch ID, so use your recovery key.'
                     : 'Touch ID isn’t available right now (lid closed or no fingerprints). Use your Mac password or recovery key.',
-                hardware: !touchOnly, recovery: true, replaceSlot: false };
-            case 'biometry-lockout': return { reason: code, title: 'Touch ID is locked',
-                text: 'Too many attempts. Unlock your Mac with your password, then try again.', hardware: true, recovery: true, replaceSlot: false };
-            case 'cancelled': return { reason: code, title: '', text: 'Touch ID was cancelled — try again when you’re ready.', hardware: true, recovery: true, replaceSlot: false, quiet: true };
+                hardware: !touchOnly, recovery: true, replaceSlot: false }
+                : { reason: code, title: t.method.charAt(0).toUpperCase() + t.method.slice(1) + ' isn’t available', text: t.method.charAt(0).toUpperCase() + t.method.slice(1) + ' isn’t available right now. Use your recovery key.',
+                    hardware: false, recovery: true, replaceSlot: false };
+            case 'biometry-lockout': return { reason: code, title: mac ? 'Touch ID is locked' : 'Too many attempts',
+                text: mac ? 'Too many attempts. Unlock your Mac with your password, then try again.' : 'Too many attempts. Unlock ' + t.here + ' with your PIN or password, then try again.',
+                hardware: true, recovery: true, replaceSlot: false };
+            case 'no-device': return { reason: code, title: 'Plug in your security key', text: 'Plug in your security key, then try again. Or use your recovery key.', hardware: true, recovery: true, replaceSlot: false };
+            case 'multiple-devices': return { reason: code, title: 'More than one security key', text: 'More than one security key is plugged in. Leave just the one you added, then try again.', hardware: true, recovery: true, replaceSlot: false };
+            case 'timeout': return { reason: code, title: '', text: 'The security key wasn’t touched in time — try again.', hardware: true, recovery: true, replaceSlot: false, quiet: true };
+            case 'pin-blocked': return { reason: code, title: 'Security key PIN blocked', text: 'Your security key’s PIN is blocked after too many wrong tries. Reset it with the key maker’s tool, or use your recovery key.',
+                hardware: false, recovery: true, replaceSlot: false };
+            case 'cancelled': return { reason: code, title: '', text: t.cancelled, hardware: true, recovery: true, replaceSlot: false, quiet: true };
             case 'not-this-device': return { reason: code, title: '', text: '', hardware: false, recovery: true, replaceSlot: false };
-            default: return { reason: 'error', title: '', text: 'Touch ID couldn’t open the vault. Try again or use your recovery key.', hardware: true, recovery: true, replaceSlot: false };
+            default: return { reason: 'error', title: '', text: (mac ? 'Touch ID' : t.method.charAt(0).toUpperCase() + t.method.slice(1)) + ' couldn’t open the vault. Try again or use your recovery key.', hardware: true, recovery: true, replaceSlot: false };
         }
     }
     /** Lock on windowHidden (any reason: minimized, app-hidden, inactive, closed) when the setting is on. */
@@ -235,5 +287,80 @@
         }
     };
 
-    return { createBridge, createPersistence, reminderSchedule, remainingCount, seVault, seErrorScreen, shouldLockOnHide, vaultStatePayload, secretClipboardParams, KEY_V2 };
+    /**
+     * Hardware keyslots for every shell: macOS uses se.* (kind secure-enclave), Windows / Linux / Android use hw.*.
+     * opts.pin: FIDO2 PIN (Linux), passed through to the shell only.
+     */
+    const hwVault = {
+        isMac: (bridge) => (bridge.platform || 'macos') === 'macos',
+        slotType: (bridge) => hwSlotType(bridge.platform || 'macos'),
+        async available(bridge) {
+            if (hwVault.isMac(bridge)) { const r = await seVault.available(bridge); return Object.assign({ kind: 'secure-enclave' }, r); }
+            try {
+                const r = await bridge.request('hw.available');
+                return { kind: (r && r.kind) || null, available: !!(r && r.available), device: (r && r.device) || '', detail: (r && r.detail) || '', pinSet: !!(r && r.pinSet) };
+            } catch (e) { return { kind: null, available: false, device: '' }; }
+        },
+        async createSlot(bridge, V, raw, opts) {
+            opts = opts || {};
+            if (hwVault.isMac(bridge)) return seVault.createSlot(bridge, V, raw, opts.label, opts.biometryOnly);
+            const slotId = V.uuid();
+            const params = { slotId, label: opts.label || hwTerms(bridge.platform).Here, vdk: V.b64(raw) };
+            if (opts.pin) params.pin = opts.pin;
+            let slot;
+            try { slot = await bridge.request('hw.createSlot', params); } catch (e) {
+                const code = errCode(e);
+                const screen = seErrorScreen(code, null, bridge.platform);
+                const err = new Error(code === 'error' ? 'Couldn’t create the ' + hwTerms(bridge.platform).keyName + ': ' + e.message : (screen.text || code)); err.code = code; err.screen = screen; throw err;
+            }
+            const want = hwSlotType(bridge.platform);
+            const clean = V.normalizeVault({ verifier: { iv: 'AAAAAAAAAAAAAAAA', ct: 'AA==' }, keyslots: [slot] });
+            if (!clean || clean.keyslots[0].type !== want) throw new Error('The app returned an invalid keyslot.');
+            return clean.keyslots[0];
+        },
+        /** → { raw (verified, caller zeroes), slot }. Errors carry .code, .slotId and .screen; 'pin-required'/'pin-invalid' ask the UI for a PIN. */
+        async unlock(bridge, V, vault, opts) {
+            opts = opts || {};
+            if (hwVault.isMac(bridge)) return seVault.unlock(bridge, V, vault);
+            const type = hwSlotType(bridge.platform);
+            const t = hwTerms(bridge.platform);
+            const slots = vault.keyslots.filter((s) => s.type === type);
+            if (!slots.length) { const e = new Error('This vault has no ' + t.keyName + ' yet.'); e.code = 'no-slot'; throw e; }
+            let notHere = 0;
+            for (const slot of slots) {
+                let res;
+                const params = { slot };
+                if (opts.pin) params.pin = opts.pin;
+                try { res = await bridge.request('hw.unwrapSlot', params); } catch (e) {
+                    const code = errCode(e);
+                    if (code === 'not-this-device') { notHere++; continue; }
+                    const screen = seErrorScreen(code, null, bridge.platform);
+                    const err = new Error(screen.text || 'Unlock failed: ' + e.message); err.code = code; err.slotId = slot.id; err.screen = screen; throw err;
+                }
+                const raw = V.unb64(res && res.vdk);
+                if (raw.length !== 32) continue;
+                const key = await V.importVdk(raw, false);
+                if (await V.checkVerifier(key, vault.verifier)) return { raw, slot };
+                raw.fill(0);
+            }
+            const e = new Error(notHere === slots.length
+                ? (t.portable ? 'This security key doesn’t open the vault. Plug in the one you added, or use your recovery key.' : 'None of this vault’s keys are on ' + t.here + '. Use the recovery key, then “' + t.add + '”.')
+                : 'The ' + t.keyName + ' did not open this vault.');
+            e.code = notHere === slots.length ? 'not-this-device' : 'wrong-key';
+            throw e;
+        },
+        async deleteSlot(bridge, slotId) {
+            return bridge.request(hwVault.isMac(bridge) ? 'se.deleteSlot' : 'hw.deleteSlot', { slotId });
+        },
+        /** Replace this device's key(s): create the new one first, then delete the old ones (see seVault.switchPolicy). */
+        async replaceSlot(bridge, V, vault, raw, opts) {
+            const slot = await hwVault.createSlot(bridge, V, raw, opts);
+            const old = new Set(opts.oldSlotIds || []);
+            const deleteFailed = [];
+            for (const id of old) { try { await hwVault.deleteSlot(bridge, id); } catch (e) { deleteFailed.push(id); } }
+            return { keyslots: vault.keyslots.filter((s) => !old.has(s.id)).concat([slot]), slot, deleteFailed };
+        }
+    };
+
+    return { createBridge, createPersistence, reminderSchedule, remainingCount, seVault, hwVault, hwTerms, hwSlotType, defaultCapabilities, seErrorScreen, shouldLockOnHide, vaultStatePayload, secretClipboardParams, KEY_V2 };
 });

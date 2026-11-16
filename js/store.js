@@ -40,6 +40,11 @@
         onError: (e) => { if (NM.toast) NM.toast('Could not save to data.json: ' + e.message, 'error', 8000); }
     });
 
+    /** Markdown → safe HTML. Windows / Linux / Android apps block remote images (CSP): show a placeholder there. */
+    NM.renderMarkdown = (md) => C.markdownToHtml(md, { offlineImages: !!NM.native && NM.native.platform !== 'macos' });
+    /** Does this device use ⌘ (Mac, iPhone, iPad) or Ctrl for shortcuts? */
+    NM.isMacLike = () => (NM.native ? NM.native.platform === 'macos' : /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent));
+
     NM.load = async function () {
         let r;
         try { r = await NM.persist.load(); } catch (e) {

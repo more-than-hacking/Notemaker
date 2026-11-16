@@ -932,6 +932,18 @@ body.gated .boot-splash { display: none; }
 .modal-settings { border-top: 1px solid var(--border); margin-top: 8px; }
 .modal-settings:empty { display: none; }
 
+/* ---------------- native apps: offline images, touch layout (Android) ---------------- */
+.md .md-img-offline { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px dashed var(--border); background: var(--surface-2); color: var(--text-3); font-size: 12.5px; }
+.md .md-img-offline::before { content: ''; width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid currentColor; opacity: 0.7; }
+/* phones: no hover-only controls, no keyboard hints, comfortable tap targets */
+.touch-ui kbd, .touch-ui #helpBtn, .touch-ui .empty-state small, .touch-ui .picker-foot, .touch-ui .drag-handle { display: none !important; }
+.touch-ui .task-act, .touch-ui .kcard-actions, .touch-ui .d-actions, .touch-ui .subtask-delete, .touch-ui .task-subtask-btn { opacity: 1; }
+.touch-ui .icon-btn { min-width: 40px; min-height: 40px; }
+.touch-ui .task-checkbox { width: 26px; height: 26px; }
+.touch-ui .task-checkbox.checked::after { left: 8px; top: 3px; }
+.touch-ui .btn.small { min-height: 36px; }
+.touch-ui .seg-btn, .touch-ui .chip-btn { min-height: 36px; }
+
 /* ---------------- responsive ---------------- */
 @media (max-width: 1200px) {
     .insight-grid { grid-template-columns: 1fr 1fr; }

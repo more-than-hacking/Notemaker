@@ -157,7 +157,7 @@
 
     // ---------------- shortcut help ----------------
     NM.openHelp = function () {
-        const mod = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl';
+        const mod = NM.isMacLike() ? '⌘' : 'Ctrl';
         const rows = [
             ['n', 'New task (focus quick add)'], [mod + ' K', 'Command palette'], [mod + ' F  or  /', 'Search everything'],
             ['← / →', 'Previous / next day'], ['t', 'Jump to today'], ['1 – 8', 'Day · Calendar · Planner · Board · Habits · Insights · Settings · Vault'],

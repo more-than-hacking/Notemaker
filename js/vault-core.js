@@ -21,7 +21,11 @@
     const VERIFIER_TEXT = 'notemaker-vault-ok';
     const MAX_FILE_BYTES = 25 * 1024 * 1024;
     const ALPH = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-    const SLOT_TYPES = ['secure-enclave', 'passkey-prf', 'recovery'];
+    const SLOT_TYPES = ['secure-enclave', 'passkey-prf', 'recovery', 'windows-hello', 'android-keystore', 'fido2-hmac'];
+    /** Keyslot type → which device kind holds it (docs/PLATFORMS.md). */
+    const HARDWARE_SLOT_TYPES = ['secure-enclave', 'passkey-prf', 'windows-hello', 'android-keystore', 'fido2-hmac'];
+    const INFO_WH = 'notemaker/vault/v1/windows-hello';
+    const INFO_FIDO2 = 'notemaker/vault/v1/fido2-hmac';
     const ITEM_TYPES = ['note', 'login', 'card', 'file'];
     const CARD_KINDS = ['card', 'id', 'license', 'other'];
 
@@ -190,6 +194,16 @@
         return unwrapVdk(slot, await hkdfKey(shared, ephRaw, INFO_SE));
     }
 
+    /* Software proofs of the hardware slot math (docs/PLATFORMS.md). The apps never run these with real keys: the
+       Windows Hello signature, the FIDO2 hmac-secret output and the Android Keystore key stay in hardware.
+       They exist so tests (and other implementations) can check every step against docs/hw-slot-test-vector.json. */
+    async function openWindowsHelloSlot(slot, signature) { return unwrapVdk(slot, await hkdfKey(signature, unb64(slot.challenge), INFO_WH)); }
+    async function openFido2Slot(slot, hmacSecretOutput) { return unwrapVdk(slot, await hkdfKey(hmacSecretOutput, unb64(slot.hkdfSalt), INFO_FIDO2)); }
+    async function openAndroidKeystoreSlot(slot, keyBytes) {
+        const key = await subtle().importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
+        return unwrapVdk(slot, key);
+    }
+
     /** vdk: CryptoKey (session key) used to write the verifier. */
     async function newVault(mode, vdk) {
         return {
@@ -260,14 +274,40 @@
 
     // ---------------- normalisation of an untrusted vault document ----------------
     const isoOr = (v) => (typeof v === 'string' && !isNaN(Date.parse(v)) ? v : new Date().toISOString());
+    /**
+     * Keyslots of a type this version doesn't know (a newer app or another platform added it) are kept as they are,
+     * within limits, so a round trip through this app never removes a way to open the vault.
+     */
+    function preserveUnknownSlot(k) {
+        if (typeof k.type !== 'string' || !/^[a-z0-9][a-z0-9-]{0,39}$/.test(k.type)) return null;
+        let copy;
+        try { const j = JSON.stringify(k); if (j.length > 16384) return null; copy = JSON.parse(j); } catch (e) { return null; }
+        copy.id = s(k.id, 100);
+        copy.label = s(k.label, 200) || k.type;
+        copy.createdAt = isoOr(k.createdAt);
+        return copy;
+    }
     function normalizeSlot(k) {
-        if (!k || typeof k !== 'object' || !SLOT_TYPES.includes(k.type) || typeof k.id !== 'string' || !k.id) return null;
+        if (!k || typeof k !== 'object' || typeof k.id !== 'string' || !k.id) return null;
         if (!isB64(k.iv, 12) || !isB64(k.ct)) return null;
+        if (!SLOT_TYPES.includes(k.type)) return preserveUnknownSlot(k);
         const base = { id: s(k.id, 100), type: k.type, label: s(k.label, 200) || k.type, createdAt: isoOr(k.createdAt), iv: k.iv, ct: k.ct };
         if (k.type === 'recovery') return isB64(k.salt) ? Object.assign(base, { salt: k.salt }) : null;
         if (k.type === 'passkey-prf') {
             if (!isB64(k.prfSalt) || !isB64(k.salt) || typeof k.credentialId !== 'string' || !isB64(k.credentialId)) return null;
             return Object.assign(base, { credentialId: k.credentialId, rpId: s(k.rpId, 300), prfSalt: k.prfSalt, salt: k.salt });
+        }
+        if (k.type === 'windows-hello') {
+            if (typeof k.keyName !== 'string' || !k.keyName || !isB64(k.challenge, 32)) return null;
+            return Object.assign(base, { keyName: s(k.keyName, 200), challenge: k.challenge, device: s(k.device, 200) });
+        }
+        if (k.type === 'android-keystore') {
+            if (typeof k.keyAlias !== 'string' || !k.keyAlias) return null;
+            return Object.assign(base, { keyAlias: s(k.keyAlias, 200), strongBox: !!k.strongBox, device: s(k.device, 200) });
+        }
+        if (k.type === 'fido2-hmac') {
+            if (typeof k.credentialId !== 'string' || !isB64(k.credentialId) || !isB64(k.salt, 32) || !isB64(k.hkdfSalt, 16)) return null;
+            return Object.assign(base, { credentialId: k.credentialId, rpId: s(k.rpId, 300), salt: k.salt, hkdfSalt: k.hkdfSalt, device: s(k.device, 200) });
         }
         if (!isB64(k.ephemeralPublicKey, 65)) return null;
         const out = Object.assign(base, { ephemeralPublicKey: k.ephemeralPublicKey, publicKey: isB64(k.publicKey) ? k.publicKey : '', device: s(k.device, 200) });
@@ -335,7 +375,8 @@
     }
 
     return {
-        MAX_FILE_BYTES, ITEM_TYPES, CARD_KINDS, SLOT_TYPES,
+        MAX_FILE_BYTES, ITEM_TYPES, CARD_KINDS, SLOT_TYPES, HARDWARE_SLOT_TYPES,
+        openWindowsHelloSlot, openFido2Slot, openAndroidKeystoreSlot,
         b64, unb64, b64url, randomBytes, uuid, sha256Hex,
         crockfordEncode, crockfordDecode, formatRecoveryKey, generateRecoveryKey, parseRecoveryKey,
         generateVdkRaw, importVdk, sessionKey, makeVerifier, checkVerifier,

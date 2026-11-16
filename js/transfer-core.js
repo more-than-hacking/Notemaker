@@ -149,13 +149,16 @@
         const ct = new Uint8Array(await subtle().encrypt({ name: 'AES-GCM', iv, additionalData: te.encode(AAD) }, key, plain));
         const file = {
             format: FORMAT, version: 1, createdAt: opts.createdAt || new Date().toISOString(),
-            source: { app: opts.source && opts.source.app === 'macos' ? 'macos' : 'web', appVersion: String((opts.source && opts.source.appVersion) || ''), device: String((opts.source && opts.source.device) || '') },
+            source: { app: sourceApp(opts.source && opts.source.app), appVersion: String((opts.source && opts.source.appVersion) || ''), device: String((opts.source && opts.source.device) || '') },
             summary: { tasks: manifest.tasks, notes: manifest.notes, vaultItems: manifest.vaultItems, vaultFiles: manifest.vaultFiles, bytes: plain.length },
             salt: V().b64(salt), iv: V().b64(iv), ct: V().b64(ct)
         };
         return { fileText: JSON.stringify(file), file, code, manifest, plainBytes: plain.length };
     }
 
+    /** source.app: which app made the file (shown before decrypting). */
+    const SOURCE_APPS = ['web', 'macos', 'windows', 'linux', 'android'];
+    const sourceApp = (a) => (SOURCE_APPS.includes(a) ? a : 'web');
     const isB64 = (s, len) => { try { const b = V().unb64(s); return len == null || b.length === len; } catch (e) { return false; } };
     /** Validate the (untrusted) envelope. text: file contents. */
     function parseEnvelope(text, sizeBytes) {
@@ -173,7 +176,7 @@
         const src = f.source && typeof f.source === 'object' ? f.source : {};
         return {
             format: FORMAT, version: 1, createdAt: typeof f.createdAt === 'string' && !isNaN(Date.parse(f.createdAt)) ? f.createdAt : null,
-            source: { app: src.app === 'macos' ? 'macos' : 'web', appVersion: String(src.appVersion || '').slice(0, 40), device: String(src.device || '').slice(0, 120) },
+            source: { app: sourceApp(src.app), appVersion: String(src.appVersion || '').slice(0, 40), device: String(src.device || '').slice(0, 120) },
             summary: { tasks: n(s.tasks), notes: n(s.notes), vaultItems: n(s.vaultItems), vaultFiles: n(s.vaultFiles), bytes: n(s.bytes) },
             salt: f.salt, iv: f.iv, ct: f.ct
         };
@@ -251,7 +254,7 @@
     }
 
     return {
-        FORMAT, AAD, MIME, MAX_BYTES, WARN_BYTES, MANIFEST_KEYS,
+        FORMAT, AAD, MIME, MAX_BYTES, WARN_BYTES, MANIFEST_KEYS, SOURCE_APPS,
         formatCode, generateCode, parseCode, normalizeCodeInput, gzip, gunzip, sha256Hex,
         countDoc, manifestFor, prepareExportDoc, buildTransferFile, parseEnvelope, openTransferFile, verifyPayload,
         planRestore, sanitizePrefs, isEmptyDoc, shouldShowWelcome, fileName, formatBytes

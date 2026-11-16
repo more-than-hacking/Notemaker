@@ -630,6 +630,10 @@
         s = s.replace(/(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/g, (m, t, code) => ph('<code>' + escapeHtml(code) + '</code>'));
         s = s.replace(IMG_RE, (m, alt, url) => {
             const u = safeImageUrl(unAngle(url));
+            if (u && OFFLINE_IMAGES && /^https?:/i.test(u)) {
+                // the desktop/mobile apps load nothing from the network (CSP): show a quiet placeholder, not a broken image
+                return ph('<span class="md-img-offline" role="img" aria-label="' + escapeHtml(alt || 'Image') + '">Image not loaded — offline app</span>');
+            }
             return ph(u ? '<img src="' + escapeHtml(u) + '" alt="' + escapeHtml(alt) + '" loading="lazy">' : '<span class="md-blocked">' + escapeHtml(m) + '</span>');
         });
         s = s.replace(/\[\[(\d{4}-\d{2}-\d{2})\]\]/g, (m, d) => (isValidDate(d)
@@ -746,9 +750,12 @@
         }
         return out.join('\n');
     }
-    function markdownToHtml(md) {
+    let OFFLINE_IMAGES = false;
+    /** opts.offlineImages: replace http(s) images with a placeholder (apps whose CSP blocks remote images). */
+    function markdownToHtml(md, opts) {
         if (!md) return '';
-        return renderBlocks(String(md).replace(/\r\n?/g, '\n').replace(/\u0000/g, '').split('\n'), 0);
+        OFFLINE_IMAGES = !!(opts && opts.offlineImages);
+        try { return renderBlocks(String(md).replace(/\r\n?/g, '\n').replace(/\u0000/g, '').split('\n'), 0); } finally { OFFLINE_IMAGES = false; }
     }
 
     // ------------------------------------------------------------------

@@ -169,7 +169,7 @@
         const md = h('textarea', { class: 'input mono', rows: 12, placeholder: '# {{weekday}}, {{date}}\n\n- ' });
         md.value = t ? t.markdown : '';
         const prev = h('div', { class: 'md template-preview' });
-        const upd = () => { prev.innerHTML = C.markdownToHtml(C.applyTemplate(md.value, S.date)); };
+        const upd = () => { prev.innerHTML = NM.renderMarkdown(C.applyTemplate(md.value, S.date)); };
         md.addEventListener('input', upd);
         upd();
         NM.modal({
@@ -245,7 +245,9 @@
                 row('Day starts', null, timeInput('dayStart', { onchange: (e) => { if (C.isValidTime(e.target.value) && e.target.value < st.dayEnd) setSetting('dayStart', e.target.value); else { NM.toast('Start must be before end', 'error'); render(); } } })),
                 row('Day ends', null, timeInput('dayEnd', { onchange: (e) => { if (C.isValidTime(e.target.value) && e.target.value > st.dayStart) setSetting('dayEnd', e.target.value); else { NM.toast('End must be after start', 'error'); render(); } } }))),
             sec('notifySection', 'Reminders & notifications',
-                row('System notifications', perm === 'granted' ? 'Enabled. Reminders fire while Notemaker is open in a tab.' : perm === 'denied' ? 'Blocked in browser settings — reminders show as in-app toasts.' : perm === 'unsupported' ? 'Not supported here — reminders show as in-app toasts.' : 'Not enabled yet — reminders show as in-app toasts until you allow them.',
+                row('System notifications', perm === 'granted' ? (!NM.native ? 'Enabled. Reminders fire while Notemaker is open in a tab.'
+                    : NM.caps && NM.caps.notifyWhenClosed ? 'Enabled. Reminders arrive even when Notemaker is closed.'
+                    : 'Enabled. Reminders arrive while Notemaker is running' + (NM.caps && NM.caps.tray ? ' — closing the window keeps it in the tray.' : '.')) : perm === 'denied' ? 'Blocked in browser settings — reminders show as in-app toasts.' : perm === 'unsupported' ? 'Not supported here — reminders show as in-app toasts.' : 'Not enabled yet — reminders show as in-app toasts until you allow them.',
                     h('div', { class: 'inline' },
                         perm === 'default' ? h('button', { class: 'btn primary small', type: 'button', onclick: NM.requestNotifications }, NM.icon('bell'), ' Enable') : h('span', { class: 'pill ' + (perm === 'granted' ? 'ok' : '') }, perm),
                         h('button', { class: 'btn ghost small', type: 'button', onclick: () => NM.notify('Notemaker', 'This is how reminders look.') }, 'Test')))),

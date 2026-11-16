@@ -77,6 +77,8 @@
     /** Desktop shell: menu-bar status item while a timer runs (null hides it). */
     function nativeLabel(label, phase) {
         if (!NM.native || label === lastLabel) return;
+        // menu-bar item (macOS), tray tooltip (Windows / Linux) or an ongoing notification (Android)
+        if (NM.caps && NM.caps.tray === false && NM.native.platform !== 'android') return;
         lastLabel = label;
         NM.native.request('app.setFocusTimer', label == null ? { label: null } : { label, phase }).catch(() => { /* */ });
     }
