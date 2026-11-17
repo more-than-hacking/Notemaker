@@ -84,4 +84,42 @@
       dispatch({ type: "menu", command: kind });
     }
   });
+
+  // Android draws edge-to-edge: keep the UI clear of the status bar, navigation bar, camera cutout and keyboard,
+  // and keep the status-bar icons readable on the page's header colour.
+  var bars = window.NotemakerSystemBars;
+  if (PLATFORM === "android" && bars) {
+    var pending = null;
+    var applyInsets = function (i) {
+      if (i) pending = i;
+      var el = document.documentElement;
+      if (!el || !pending) return;
+      ["top", "right", "bottom", "left"].forEach(function (k) {
+        var n = Number(pending[k]);
+        el.style.setProperty("--nm-inset-" + k, (isFinite(n) && n > 0 ? Math.min(n, 400) : 0) + "px");
+      });
+    };
+    Object.defineProperty(window, "__notemakerInsets", { configurable: false, writable: false, value: applyInsets });
+    try { applyInsets(JSON.parse(bars.insets())); } catch (e) {}
+    document.addEventListener("readystatechange", function () { applyInsets(); });
+
+    var lastLight = null, queued = false;
+    var reportBars = function () {
+      queued = false;
+      var t = document.querySelector(".topbar") || document.body;
+      if (!t) return;
+      var m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(getComputedStyle(t).backgroundColor || "");
+      if (!m) return;
+      var light = (0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3]) / 255 > 0.55;
+      if (light !== lastLight) { lastLight = light; try { bars.setLightBackground(light); } catch (e) {} }
+    };
+    var queueReport = function () { if (!queued) { queued = true; requestAnimationFrame(reportBars); } };
+    document.addEventListener("DOMContentLoaded", function () {
+      reportBars();
+      var mo = new MutationObserver(queueReport);
+      mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme", "style"] });
+      mo.observe(document.body, { attributes: true, attributeFilter: ["class", "data-theme"] });
+      try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", queueReport); } catch (e) {}
+    });
+  }
 })();

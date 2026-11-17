@@ -1039,3 +1039,38 @@ body.gated .boot-splash { display: none; }
     .app { box-shadow: none; margin: 0; }
     body { background: #fff; }
 }
+
+/* ---------------- system bars (Android edge-to-edge, notched screens) ----------------
+   The Android shell sets --nm-inset-* (CSS px); browsers with viewport-fit=cover provide env(). Both are 0 elsewhere. */
+:root {
+    --safe-t: max(env(safe-area-inset-top, 0px), var(--nm-inset-top, 0px));
+    --safe-r: max(env(safe-area-inset-right, 0px), var(--nm-inset-right, 0px));
+    --safe-b: max(env(safe-area-inset-bottom, 0px), var(--nm-inset-bottom, 0px));
+    --safe-l: max(env(safe-area-inset-left, 0px), var(--nm-inset-left, 0px));
+}
+.app { padding-left: var(--safe-l); padding-right: var(--safe-r); }
+/* The header's own colour fills the strip behind the clock and battery icons. */
+.topbar { border-top: var(--safe-t) solid var(--bg); }
+.main { padding-bottom: var(--safe-b); }
+.sidebar { padding-top: calc(22px + var(--safe-t)); padding-bottom: calc(22px + var(--safe-b)); }
+.drawer { padding-top: var(--safe-t); padding-bottom: var(--safe-b); padding-right: var(--safe-r); }
+.modal-backdrop, .flow-backdrop {
+    padding: calc(16px + var(--safe-t)) calc(16px + var(--safe-r)) calc(16px + var(--safe-b)) calc(16px + var(--safe-l));
+}
+.modal-backdrop.top { padding-top: calc(12vh + var(--safe-t)); }
+.modal, .flow { max-height: calc(100vh - 32px - var(--safe-t) - var(--safe-b)); }
+.toasts { bottom: calc(20px + var(--safe-b)); }
+.focus-mini { bottom: calc(20px + var(--safe-b)); right: calc(20px + var(--safe-r)); }
+@media (max-width: 680px) {
+    .modal-backdrop.top { padding-top: calc(16px + var(--safe-t)); }
+    .focus-mini { left: calc(12px + var(--safe-l)); right: calc(12px + var(--safe-r)); bottom: calc(12px + var(--safe-b)); }
+    .toasts { bottom: calc(84px + var(--safe-b)); }
+    .flow-backdrop { padding: 0; }
+    .flow { max-height: none; padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l); }
+    .flow-top { top: var(--safe-t); }
+}
+@media (max-width: 1000px) {
+    /* The closed side menu sits just off-screen; don't let its shadow show along the left edge. */
+    .sidebar { box-shadow: none; }
+    body.sidebar-open .sidebar { box-shadow: var(--shadow-lg); }
+}
