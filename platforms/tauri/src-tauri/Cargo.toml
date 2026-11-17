@@ -1,6 +1,6 @@
 [package]
 name = "notemaker"
-version = "2.5.0"
+version = "2.5.1"
 description = "Notemaker — daily tasks, notes, habits and a hardware-protected vault"
 authors = ["Notemaker contributors"]
 license = "MIT"

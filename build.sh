@@ -19,7 +19,7 @@ ROOT="$(pwd)"
 APP_NAME="Notemaker"
 OUT_DIR="$ROOT/build_output"
 APP="$OUT_DIR/$APP_NAME.app"
-VERSION="2.5.0"
+VERSION="2.5.1"
 BUILD_NUMBER="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)"
 
 OPT="-O"; FORCE_SWIFTC=1; ARCHS="arm64 x86_64"

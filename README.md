@@ -42,7 +42,7 @@ Pick your system: [Mac](#option-a-macos-app-recommended-on-a-mac) · [Windows](#
 [Linux](#option-c-linux) · [Android](#option-d-android) · [Browser](#option-e-in-the-browser)
 
 Ready-made downloads for every system are on the [**Releases**](https://github.com/more-than-hacking/Notemaker/releases)
-page (latest: **v2.5.0**). Every download is free; the apps aren't signed with paid certificates, so Mac and Windows show
+page (latest: **v2.5.1**). Every download is free; the apps aren't signed with paid certificates, so Mac and Windows show
 a one-time warning (how to get past it is explained below). To confirm a download is genuine:
 `gh attestation verify <file> --repo more-than-hacking/Notemaker`.
 

@@ -4,7 +4,7 @@
 (function () {
     'use strict';
     const NM = window.NM, C = NM.C, S = NM.state, h = NM.h, T = window.NotemakerTransfer, V = window.NotemakerVault;
-    NM.VERSION = '2.5.0';
+    NM.VERSION = '2.5.1';
     const WELCOMED = 'notemaker_welcomed';
     const kit = () => NM.vault.kit;
     const plat = () => (NM.native ? (NM.native.platform || 'macos') : 'web');
